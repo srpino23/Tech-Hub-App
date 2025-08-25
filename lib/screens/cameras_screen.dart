@@ -75,11 +75,12 @@ class _CamerasScreenState extends State<CamerasScreen> {
       final status = camera['status'] as String?;
       final userTeam = widget.authManager.teamName;
 
-      final teamMatch = cameraTeam != null && 
-                        userTeam != null &&
-                        cameraTeam.toUpperCase() == userTeam.toUpperCase();
+      final teamMatch =
+          cameraTeam != null &&
+          userTeam != null &&
+          cameraTeam.toUpperCase() == userTeam.toUpperCase();
       final statusMatch = status != null && status.toLowerCase() == 'offline';
-      
+
       return teamMatch && statusMatch;
     }).toList();
   }

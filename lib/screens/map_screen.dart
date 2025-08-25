@@ -666,37 +666,111 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  List<Marker> _buildUserMarkers() {
-    if (!_showUsers || _users.isEmpty) return [];
+  List<Map<String, dynamic>> _separateOverlappingUsers(
+    List<Map<String, dynamic>> users,
+  ) {
+    final Map<String, List<Map<String, dynamic>>> groupedUsers = {};
 
-    final markers = <Marker>[];
-
-    for (final user in _users) {
+    // Agrupar usuarios por coordenadas (redondeadas a 6 decimales para evitar diferencias mínimas)
+    for (final user in users) {
       final latestLocation = _getLatestUserLocation(user);
       if (latestLocation != null) {
         try {
           final lat = double.parse(latestLocation['latitude'] as String);
           final lng = double.parse(latestLocation['longitude'] as String);
-          final userName = user['name'] as String? ?? 'Usuario';
+          final key = '${lat.toStringAsFixed(6)},${lng.toStringAsFixed(6)}';
 
-          markers.add(
-            Marker(
-              point: LatLng(lat, lng),
-              width: 32,
-              height: 32,
-              child: GestureDetector(
-                onTap: () => _showUserInfo(user, latestLocation),
-                child: _buildUserIcon(userName),
-              ),
-            ),
-          );
+          if (!groupedUsers.containsKey(key)) {
+            groupedUsers[key] = [];
+          }
+          groupedUsers[key]!.add({
+            'user': user,
+            'location': latestLocation,
+            'lat': lat,
+            'lng': lng,
+          });
         } catch (e) {
           // Ignorar usuarios con coordenadas inválidas
         }
       }
     }
 
-    return markers;
+    final List<Map<String, dynamic>> separatedUsers = [];
+
+    for (final group in groupedUsers.values) {
+      if (group.length == 1) {
+        // Solo un usuario en esta ubicación, mantener coordenadas originales
+        separatedUsers.add(group[0]);
+      } else {
+        // Múltiples usuarios en la misma ubicación, separarlos en círculo
+        final centerLat = group[0]['lat'] as double;
+        final centerLng = group[0]['lng'] as double;
+
+        // Radio de separación en grados (aproximadamente 10 metros)
+        const double radius = 0.0001;
+
+        for (int i = 0; i < group.length; i++) {
+          final angle = (2 * math.pi * i) / group.length;
+          final offsetLat = radius * math.cos(angle);
+          final offsetLng = radius * math.sin(angle);
+
+          final separatedUser = Map<String, dynamic>.from(group[i]);
+          separatedUser['lat'] = centerLat + offsetLat;
+          separatedUser['lng'] = centerLng + offsetLng;
+
+          separatedUsers.add(separatedUser);
+        }
+      }
+    }
+
+    return separatedUsers;
+  }
+
+  List<Marker> _buildUserMarkers() {
+    // Solo mostrar usuarios si el equipo es "et"
+    final isEtTeam = widget.authManager.teamName?.toLowerCase() == 'et';
+    if (!_showUsers || _users.isEmpty || !isEtTeam) return [];
+
+    // Preparar lista de usuarios con ubicaciones válidas
+    final usersWithLocations = <Map<String, dynamic>>[];
+    for (final user in _users) {
+      final latestLocation = _getLatestUserLocation(user);
+      if (latestLocation != null) {
+        try {
+          final lat = double.parse(latestLocation['latitude'] as String);
+          final lng = double.parse(latestLocation['longitude'] as String);
+          usersWithLocations.add({
+            'user': user,
+            'location': latestLocation,
+            'lat': lat,
+            'lng': lng,
+          });
+        } catch (e) {
+          // Ignorar usuarios con coordenadas inválidas
+        }
+      }
+    }
+
+    // Separar usuarios que están en las mismas coordenadas
+    final separatedUsers = _separateOverlappingUsers(_users);
+
+    return separatedUsers.map((userData) {
+      final user = userData['user'] as Map<String, dynamic>;
+      final location = userData['location'] as Map<String, dynamic>;
+      final lat = userData['lat'] as double;
+      final lng = userData['lng'] as double;
+      final userName = user['name'] as String? ?? 'Usuario';
+
+      return Marker(
+        point: LatLng(lat, lng),
+        width: 32,
+        height: 32,
+        child: GestureDetector(
+          onTap: () => _showUserInfo(user, location),
+          child: _buildUserIcon(userName),
+        ),
+      );
+    }).toList();
   }
 
   List<Marker> _buildCameraMarkers() {
@@ -707,8 +781,21 @@ class _MapScreenState extends State<MapScreen> {
     List<Map<String, dynamic>> camerasToShow;
 
     if (_showAllCameras) {
-      // Si está seleccionado "Todas", mostrar todas las cámaras
-      camerasToShow = _cameras;
+      // Si está seleccionado "Todas", mostrar todas las cámaras pero solo de la zona del equipo
+      if (isEtTeam) {
+        // ET team: mostrar todas las cámaras
+        camerasToShow = _cameras;
+      } else {
+        // Otros equipos: mostrar todas las cámaras pero solo de su zona
+        camerasToShow =
+            _cameras.where((camera) {
+              final liable = camera['liable'] as String?;
+              return liable != null &&
+                  widget.authManager.teamName != null &&
+                  liable.toUpperCase() ==
+                      widget.authManager.teamName!.toUpperCase();
+            }).toList();
+      }
     } else {
       // Si no está seleccionado "Todas"
       if (isEtTeam) {
@@ -1184,18 +1271,6 @@ class _MapScreenState extends State<MapScreen> {
               interactionOptions: const InteractionOptions(
                 flags: InteractiveFlag.all & ~InteractiveFlag.flingAnimation,
               ),
-              onPositionChanged: (camera, hasGesture) {
-                try {
-                  // Prevenir zooms extremos que pueden causar crashes
-                  if (camera.zoom > 17.0) {
-                    _mapController.move(camera.center, 17.0);
-                  } else if (camera.zoom < 8.0) {
-                    _mapController.move(camera.center, 8.0);
-                  }
-                } catch (e) {
-                  // Manejo silencioso de errores de zoom para prevenir crashes
-                }
-              },
             ),
             children: [
               // Capa base del mapa
