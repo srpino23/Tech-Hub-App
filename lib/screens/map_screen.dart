@@ -1240,8 +1240,8 @@ class _MapScreenState extends State<MapScreen> {
               if (!_isLoadingCameras && _showGraphics)
                 MarkerLayer(markers: _buildZoneGraphicsMarkers()),
 
-              // Marcadores de usuarios (siempre al final para estar encima)
-              if (!_isLoadingUsers && _showUsers)
+              // Marcadores de usuarios (siempre al final para estar encima, pero no con gráficos)
+              if (!_isLoadingUsers && _showUsers && !_showGraphics)
                 MarkerLayer(markers: _buildUserMarkers()),
             ],
           ),
