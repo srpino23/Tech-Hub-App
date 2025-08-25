@@ -4,6 +4,7 @@ import '../auth_manager.dart';
 import 'cameras_screen.dart';
 import 'profile_screen.dart';
 import 'map_screen.dart';
+import 'works_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final AuthManager authManager;
@@ -27,7 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
         case 2:
           return const _PlaceholderScreen(title: 'Inventario');
         case 3:
-          return const _PlaceholderScreen(title: 'Trabajos');
+          return WorksScreen(authManager: widget.authManager);
         case 4:
           return ProfileScreen(authManager: widget.authManager);
         default:
@@ -42,7 +43,7 @@ class _HomeScreenState extends State<HomeScreen> {
         case 2:
           return const _PlaceholderScreen(title: 'Crear Remito');
         case 3:
-          return const _PlaceholderScreen(title: 'Trabajos');
+          return WorksScreen(authManager: widget.authManager);
         case 4:
           return ProfileScreen(authManager: widget.authManager);
         default:
