@@ -9,6 +9,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../auth_manager.dart';
 import '../services/analyzer_api_client.dart';
+import '../services/techhub_api_client.dart';
 
 class MapScreen extends StatefulWidget {
   final AuthManager authManager;
@@ -24,11 +25,13 @@ class _MapScreenState extends State<MapScreen> {
 
   // Data
   List<Map<String, dynamic>> _cameras = [];
+  List<Map<String, dynamic>> _users = [];
   Map<String, dynamic>? _zoneBoundaries;
 
   // Loading states
   bool _isLoadingCameras = true;
   bool _isLoadingBoundaries = true;
+  bool _isLoadingUsers = true;
 
   // Control states
   bool _showUsers = true;
@@ -48,7 +51,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<void> _loadData() async {
-    await Future.wait([_loadZoneBoundaries(), _loadCameras()]);
+    await Future.wait([_loadZoneBoundaries(), _loadCameras(), _loadUsers()]);
   }
 
   Future<void> _loadZoneBoundaries() async {
@@ -84,15 +87,62 @@ class _MapScreenState extends State<MapScreen> {
             _isLoadingCameras = false;
           });
         } else {
-          setState(() {
-            _isLoadingCameras = false;
-          });
+          if (mounted) {
+            setState(() {
+              _isLoadingCameras = false;
+            });
+          }
         }
       }
-    } catch (e) {
+    } on Exception catch (e) {
+      print('Exception loading cameras: $e');
       if (mounted) {
         setState(() {
           _isLoadingCameras = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading cameras: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingCameras = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadUsers() async {
+    try {
+      final response = await TechHubApiClient.getUsers();
+
+      if (mounted) {
+        if (response.isSuccess && response.data != null) {
+          print('Users loaded: ${response.data!.length}');
+          setState(() {
+            _users = response.data!;
+            _isLoadingUsers = false;
+          });
+        } else {
+          print('Failed to load users: ${response.error}');
+          if (mounted) {
+            setState(() {
+              _isLoadingUsers = false;
+            });
+          }
+        }
+      }
+    } on Exception catch (e) {
+      print('Exception loading users: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingUsers = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading users: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingUsers = false;
         });
       }
     }
@@ -311,7 +361,7 @@ class _MapScreenState extends State<MapScreen> {
             value: count.toDouble(),
             color: _getStatusColor(data['status'] as String),
             title: '',
-            radius: 15,
+            radius: 19,
             showTitle: false,
           ),
         );
@@ -322,8 +372,8 @@ class _MapScreenState extends State<MapScreen> {
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
-          height: 40,
-          width: 40,
+          height: 50,
+          width: 50,
           child: Stack(
             alignment: Alignment.center,
             children: [
@@ -331,7 +381,7 @@ class _MapScreenState extends State<MapScreen> {
                 PieChartData(
                   sections: sections,
                   sectionsSpace: 1,
-                  centerSpaceRadius: 10,
+                  centerSpaceRadius: 12,
                   borderData: FlBorderData(show: false),
                 ),
               ),
@@ -388,13 +438,268 @@ class _MapScreenState extends State<MapScreen> {
         markers.add(
           Marker(
             point: center,
-            width: 60,
-            height: 60,
+            width: 70,
+            height: 70,
             child: _buildZonePieChart(zone, stats),
           ),
         );
       }
     });
+
+    return markers;
+  }
+
+  Map<String, dynamic>? _getLatestUserLocation(Map<String, dynamic> user) {
+    final historyLocation = user['historyLocation'] as List?;
+
+    if (historyLocation == null || historyLocation.isEmpty) {
+      return null;
+    }
+
+    // Encontrar la ubicación más reciente basada en la fecha
+    Map<String, dynamic>? latestLocation;
+    DateTime? latestDate;
+
+    for (final location in historyLocation) {
+      try {
+        final dateStr = location['date'] as String?;
+        if (dateStr != null) {
+          final date = DateTime.parse(dateStr);
+          if (latestDate == null || date.isAfter(latestDate)) {
+            latestDate = date;
+            latestLocation = location;
+          }
+        }
+      } catch (e) {
+        // Ignorar errores de parsing de fecha
+      }
+    }
+
+    return latestLocation;
+  }
+
+  Widget _buildUserIcon(String userName) {
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        color: Colors.blue,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Icon(LucideIcons.user, color: Colors.white, size: 16),
+    );
+  }
+
+  void _showUserInfo(Map<String, dynamic> user, Map<String, dynamic> location) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          elevation: 0,
+          insetPadding: const EdgeInsets.all(16),
+          child: Container(
+            width: double.infinity,
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width - 32,
+            ),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white,
+                  Colors.blue.shade50.withValues(alpha: 0.3),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.blue.withValues(alpha: 0.1),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${user['name'] ?? 'Usuario'} ${user['surname'] ?? ''}'
+                            .trim(),
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 2,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Colors.grey.shade50, Colors.grey.shade100],
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close, color: Colors.grey),
+                        iconSize: 20,
+                        padding: const EdgeInsets.all(8),
+                        constraints: const BoxConstraints(
+                          minWidth: 36,
+                          minHeight: 36,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _buildUserInfoRow(
+                  'Ubicación',
+                  '${location['latitude']}, ${location['longitude']}',
+                ),
+                _buildUserInfoRow(
+                  'Última actualización',
+                  _formatUserDate(location['date']),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildUserInfoRow(String label, String value) {
+    IconData icon;
+    Color iconColor;
+
+    switch (label.toLowerCase()) {
+      case 'ubicación':
+        icon = Icons.location_on;
+        iconColor = Colors.red;
+        break;
+      case 'última actualización':
+        icon = Icons.access_time;
+        iconColor = Colors.grey;
+        break;
+      default:
+        icon = Icons.info;
+        iconColor = Colors.grey;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: iconColor),
+              const SizedBox(width: 8),
+              Text(
+                '$label:',
+                style: const TextStyle(fontWeight: FontWeight.w500),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.only(left: 24),
+            child: Text(
+              value,
+              style: const TextStyle(color: Colors.grey),
+              softWrap: true,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatUserDate(dynamic dateValue) {
+    if (dateValue == null) return 'N/A';
+    try {
+      DateTime date;
+      if (dateValue is String) {
+        date = DateTime.parse(dateValue);
+      } else {
+        return 'N/A';
+      }
+
+      Duration difference = DateTime.now().difference(date);
+      if (difference.inMinutes < 1) {
+        return 'Hace menos de 1 minuto';
+      } else if (difference.inMinutes < 60) {
+        return 'Hace ${difference.inMinutes} minutos';
+      } else if (difference.inHours < 24) {
+        return 'Hace ${difference.inHours} horas';
+      } else {
+        return 'Hace ${difference.inDays} días';
+      }
+    } catch (e) {
+      return 'N/A';
+    }
+  }
+
+  List<Marker> _buildUserMarkers() {
+    if (!_showUsers || _users.isEmpty) return [];
+
+    final markers = <Marker>[];
+
+    for (final user in _users) {
+      final latestLocation = _getLatestUserLocation(user);
+      if (latestLocation != null) {
+        try {
+          final lat = double.parse(latestLocation['latitude'] as String);
+          final lng = double.parse(latestLocation['longitude'] as String);
+          final userName = user['name'] as String? ?? 'Usuario';
+
+          markers.add(
+            Marker(
+              point: LatLng(lat, lng),
+              width: 32,
+              height: 32,
+              child: GestureDetector(
+                onTap: () => _showUserInfo(user, latestLocation),
+                child: _buildUserIcon(userName),
+              ),
+            ),
+          );
+        } catch (e) {
+          // Ignorar usuarios con coordenadas inválidas
+        }
+      }
+    }
 
     return markers;
   }
@@ -934,6 +1239,10 @@ class _MapScreenState extends State<MapScreen> {
               // Gráficos de zona
               if (!_isLoadingCameras && _showGraphics)
                 MarkerLayer(markers: _buildZoneGraphicsMarkers()),
+
+              // Marcadores de usuarios (siempre al final para estar encima)
+              if (!_isLoadingUsers && _showUsers)
+                MarkerLayer(markers: _buildUserMarkers()),
             ],
           ),
 
@@ -944,7 +1253,7 @@ class _MapScreenState extends State<MapScreen> {
           if (_showSearch) _buildSearchBar(),
 
           // Indicador de carga
-          if (_isLoadingCameras || _isLoadingBoundaries)
+          if (_isLoadingCameras || _isLoadingBoundaries || _isLoadingUsers)
             Positioned(
               top: 16,
               left: 16,
