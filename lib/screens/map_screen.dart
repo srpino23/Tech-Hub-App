@@ -10,6 +10,7 @@ import 'package:fl_chart/fl_chart.dart';
 import '../auth_manager.dart';
 import '../services/analyzer_api_client.dart';
 import '../services/techhub_api_client.dart';
+import 'camera_crud_popup.dart';
 
 class MapScreen extends StatefulWidget {
   final AuthManager authManager;
@@ -94,15 +95,13 @@ class _MapScreenState extends State<MapScreen> {
           }
         }
       }
-    } on Exception catch (e) {
-      print('Exception loading cameras: $e');
+    } on Exception {
       if (mounted) {
         setState(() {
           _isLoadingCameras = false;
         });
       }
     } catch (e) {
-      print('Error loading cameras: $e');
       if (mounted) {
         setState(() {
           _isLoadingCameras = false;
@@ -117,13 +116,11 @@ class _MapScreenState extends State<MapScreen> {
 
       if (mounted) {
         if (response.isSuccess && response.data != null) {
-          print('Users loaded: ${response.data!.length}');
           setState(() {
             _users = response.data!;
             _isLoadingUsers = false;
           });
         } else {
-          print('Failed to load users: ${response.error}');
           if (mounted) {
             setState(() {
               _isLoadingUsers = false;
@@ -131,15 +128,13 @@ class _MapScreenState extends State<MapScreen> {
           }
         }
       }
-    } on Exception catch (e) {
-      print('Exception loading users: $e');
+    } on Exception {
       if (mounted) {
         setState(() {
           _isLoadingUsers = false;
         });
       }
     } catch (e) {
-      print('Error loading users: $e');
       if (mounted) {
         setState(() {
           _isLoadingUsers = false;
@@ -1106,8 +1101,8 @@ class _MapScreenState extends State<MapScreen> {
             ),
             const SizedBox(height: 16),
             _buildControlButton(
-              icon: LucideIcons.plus,
-              label: 'CRUD',
+              icon: LucideIcons.settings,
+              label: 'Admin',
               isActive: false,
               onPressed: _openCameraCrud,
               activeColor: Colors.red,
@@ -1170,21 +1165,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   void _openCameraCrud() {
-    // TODO: Implementar CRUD de cámaras
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('CRUD Cámaras'),
-            content: const Text('Funcionalidad en desarrollo'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cerrar'),
-              ),
-            ],
-          ),
-    );
+    showDialog(context: context, builder: (context) => const CameraCrudPopup());
   }
 
   @override
