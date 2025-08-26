@@ -28,7 +28,7 @@ class _WorksScreenState extends State<WorksScreen> {
 
   // Cache para materiales para evitar múltiples llamadas
   final Map<String, Map<String, dynamic>?> _materialsCache = {};
-  
+
   // Cache para usuarios para evitar múltiples llamadas
   List<Map<String, dynamic>> _users = [];
   bool _isUsersLoaded = false;
@@ -102,7 +102,12 @@ class _WorksScreenState extends State<WorksScreen> {
       _tasks.clear();
       _reports.clear();
     }
-    await Future.wait([_loadUsers(), _loadTasks(), _loadReports()]);
+
+    // Cargar usuarios primero para que estén disponibles cuando se carguen los reportes
+    await _loadUsers();
+
+    // Luego cargar tareas y reportes en paralelo
+    await Future.wait([_loadTasks(), _loadReports()]);
   }
 
   Future<void> _loadTasks({bool loadMore = false}) async {
@@ -119,9 +124,9 @@ class _WorksScreenState extends State<WorksScreen> {
       });
 
       final isET = await _isETTeam();
-      
+
       late ApiResponse<Map<String, dynamic>> response;
-      
+
       if (isET) {
         // ET team can see all tasks
         response = await TechHubApiClient.getAllTasks(
@@ -148,7 +153,8 @@ class _WorksScreenState extends State<WorksScreen> {
         throw Exception(response.error ?? 'Failed to load tasks');
       }
 
-      final List<Map<String, dynamic>> newTasks = List<Map<String, dynamic>>.from(response.data!['tasks']);
+      final List<Map<String, dynamic>> newTasks =
+          List<Map<String, dynamic>>.from(response.data!['tasks']);
       final Map<String, dynamic> pagination = response.data!['pagination'];
       final int total = pagination['totalItems'];
       final int totalPages = pagination['totalPages'];
@@ -167,7 +173,7 @@ class _WorksScreenState extends State<WorksScreen> {
           _hasMoreTasks = hasNextPage;
           _filterTasks();
           _isLoadingTasks = false;
-          if (!_isLoadingReports) {
+          if (!_isLoadingReports && _isUsersLoaded) {
             _isLoading = false;
           }
         });
@@ -176,7 +182,7 @@ class _WorksScreenState extends State<WorksScreen> {
       if (mounted) {
         setState(() {
           _isLoadingTasks = false;
-          if (!_isLoadingReports) {
+          if (!_isLoadingReports && _isUsersLoaded) {
             _isLoading = false;
           }
         });
@@ -200,9 +206,9 @@ class _WorksScreenState extends State<WorksScreen> {
       });
 
       final isET = await _isETTeam();
-      
+
       late ApiResponse<Map<String, dynamic>> response;
-      
+
       if (isET) {
         // ET team can see all reports
         response = await TechHubApiClient.getAllReports(
@@ -234,7 +240,8 @@ class _WorksScreenState extends State<WorksScreen> {
         throw Exception(response.error ?? 'Failed to load reports');
       }
 
-      final List<Map<String, dynamic>> allReports = List<Map<String, dynamic>>.from(response.data!['reports']);
+      final List<Map<String, dynamic>> allReports =
+          List<Map<String, dynamic>>.from(response.data!['reports']);
       final Map<String, dynamic> pagination = response.data!['pagination'];
       final int total = pagination['totalItems'];
       final int totalPages = pagination['totalPages'];
@@ -242,17 +249,18 @@ class _WorksScreenState extends State<WorksScreen> {
 
       // Filtrar solo los remitos del usuario actual para equipos no-ET
       List<Map<String, dynamic>> filteredReports;
-      
+
       if (isET) {
         // ET team sees all reports
         filteredReports = allReports;
       } else {
         // Regular teams see only their user's reports
         final userId = widget.authManager.userId;
-        filteredReports = allReports.where((report) {
-          return report['userId'] != null &&
-              report['userId'].toString() == userId.toString();
-        }).toList();
+        filteredReports =
+            allReports.where((report) {
+              return report['userId'] != null &&
+                  report['userId'].toString() == userId.toString();
+            }).toList();
       }
 
       if (mounted) {
@@ -268,7 +276,7 @@ class _WorksScreenState extends State<WorksScreen> {
           _hasMoreReports = hasNextPage;
           _filterTasks();
           _isLoadingReports = false;
-          if (!_isLoadingTasks) {
+          if (!_isLoadingTasks && _isUsersLoaded) {
             _isLoading = false;
           }
         });
@@ -277,7 +285,7 @@ class _WorksScreenState extends State<WorksScreen> {
       if (mounted) {
         setState(() {
           _isLoadingReports = false;
-          if (!_isLoadingTasks) {
+          if (!_isLoadingTasks && _isUsersLoaded) {
             _isLoading = false;
           }
         });
@@ -301,13 +309,21 @@ class _WorksScreenState extends State<WorksScreen> {
 
   Future<void> _loadUsers() async {
     if (_isUsersLoaded) return; // Ya están cargados
-    
+
     try {
+      setState(() {
+        _isLoading = true;
+      });
+
       final response = await TechHubApiClient.getUsers();
-      
+
       if (response.isSuccess && response.data != null) {
-        _users = response.data!;
-        _isUsersLoaded = true;
+        if (mounted) {
+          setState(() {
+            _users = response.data!;
+            _isUsersLoaded = true;
+          });
+        }
       }
     } catch (e) {
       // Silenciar errores de carga de usuarios para no interrumpir la funcionalidad principal
@@ -316,17 +332,21 @@ class _WorksScreenState extends State<WorksScreen> {
   }
 
   String _getUserNameById(String userId) {
+    if (!_isUsersLoaded || _users.isEmpty) {
+      return 'Cargando...';
+    }
+
     final user = _users.firstWhere(
       (user) => user['_id']?.toString() == userId,
       orElse: () => <String, dynamic>{},
     );
-    
+
     if (user.isNotEmpty) {
       final name = user['name']?.toString() ?? '';
       final surname = user['surname']?.toString() ?? '';
       return '$name $surname'.trim();
     }
-    
+
     return 'Usuario desconocido';
   }
 
@@ -339,7 +359,7 @@ class _WorksScreenState extends State<WorksScreen> {
       });
 
       final isET = await _isETTeam();
-      
+
       if (!isET) {
         final teamId = await _getTeamId();
         if (teamId == null) {
@@ -371,21 +391,37 @@ class _WorksScreenState extends State<WorksScreen> {
 
   void _filterTasks() {
     if (_selectedSection == 'tareas') {
-      _filteredTasks = _tasks.where((task) {
-        final matchesStatus = task['status'] == _selectedStatus;
-        final matchesSearch = _searchQuery.isEmpty || 
-            (task['title']?.toString().toLowerCase().contains(_searchQuery.toLowerCase()) ?? false) ||
-            (task['toDo']?.toString().toLowerCase().contains(_searchQuery.toLowerCase()) ?? false);
-        return matchesStatus && matchesSearch;
-      }).toList();
+      _filteredTasks =
+          _tasks.where((task) {
+            final matchesStatus = task['status'] == _selectedStatus;
+            final matchesSearch =
+                _searchQuery.isEmpty ||
+                (task['title']?.toString().toLowerCase().contains(
+                      _searchQuery.toLowerCase(),
+                    ) ??
+                    false) ||
+                (task['toDo']?.toString().toLowerCase().contains(
+                      _searchQuery.toLowerCase(),
+                    ) ??
+                    false);
+            return matchesStatus && matchesSearch;
+          }).toList();
     } else if (_selectedSection == 'remitos') {
-      _filteredTasks = _reports.where((report) {
-        final matchesStatus = report['status'] == _selectedStatus;
-        final matchesSearch = _searchQuery.isEmpty || 
-            (report['typeOfWork']?.toString().toLowerCase().contains(_searchQuery.toLowerCase()) ?? false) ||
-            (report['toDo']?.toString().toLowerCase().contains(_searchQuery.toLowerCase()) ?? false);
-        return matchesStatus && matchesSearch;
-      }).toList();
+      _filteredTasks =
+          _reports.where((report) {
+            final matchesStatus = report['status'] == _selectedStatus;
+            final matchesSearch =
+                _searchQuery.isEmpty ||
+                (report['typeOfWork']?.toString().toLowerCase().contains(
+                      _searchQuery.toLowerCase(),
+                    ) ??
+                    false) ||
+                (report['toDo']?.toString().toLowerCase().contains(
+                      _searchQuery.toLowerCase(),
+                    ) ??
+                    false);
+            return matchesStatus && matchesSearch;
+          }).toList();
     }
   }
 
@@ -406,6 +442,11 @@ class _WorksScreenState extends State<WorksScreen> {
       _filterTasks();
     });
 
+    // Si se cambia a remitos y los usuarios no están cargados, cargarlos
+    if (section == 'remitos' && !_isUsersLoaded) {
+      _loadUsers();
+    }
+
     if (_searchQuery.isNotEmpty) {
       _searchData();
     }
@@ -416,7 +457,8 @@ class _WorksScreenState extends State<WorksScreen> {
       _loadTasks(loadMore: true);
     } else if (_selectedSection == 'remitos' &&
         _hasMoreReports &&
-        !_isLoadingReports) {
+        !_isLoadingReports &&
+        _isUsersLoaded) {
       _loadReports(loadMore: true);
     }
   }
@@ -559,8 +601,18 @@ class _WorksScreenState extends State<WorksScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading && _tasks.isEmpty && _reports.isEmpty) {
-      return const Center(
-        child: CircularProgressIndicator(color: Colors.orange),
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(color: Colors.orange),
+            const SizedBox(height: 16),
+            Text(
+              !_isUsersLoaded ? 'Cargando usuarios...' : 'Cargando datos...',
+              style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+            ),
+          ],
+        ),
       );
     }
 
@@ -672,7 +724,7 @@ class _WorksScreenState extends State<WorksScreen> {
             ),
           ),
         ),
-        
+
         // Section selector (Tareas / Remitos)
         Container(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -1290,7 +1342,7 @@ class _WorksScreenState extends State<WorksScreen> {
   DateTime? _getTaskDate(Map<String, dynamic> item) {
     final dateValue = item['date'];
     if (dateValue == null) return null;
-    
+
     try {
       if (dateValue is String) {
         return DateTime.parse(dateValue);
@@ -1314,7 +1366,7 @@ class _WorksScreenState extends State<WorksScreen> {
   String _getTaskDescription(Map<String, dynamic> item) {
     final toDo = item['toDo']?.toString();
     final typeOfWork = item['typeOfWork']?.toString();
-    
+
     if (toDo != null && toDo.isNotEmpty) {
       return toDo;
     } else if (typeOfWork != null && typeOfWork.isNotEmpty) {
@@ -1354,13 +1406,11 @@ class _WorksScreenState extends State<WorksScreen> {
       return 'Recambio';
     } else if (title.contains('correctivo')) {
       return 'Correctivo';
-    } else if (title.contains('reubicacion') ||
-        title.contains('reubicación')) {
+    } else if (title.contains('reubicacion') || title.contains('reubicación')) {
       return 'Reubicación';
     } else if (title.contains('retiro de sistema')) {
       return 'Retiro de Sistema';
-    } else if (title.contains('instalacion') ||
-        title.contains('instalación')) {
+    } else if (title.contains('instalacion') || title.contains('instalación')) {
       return 'Instalación';
     }
     return 'General';
@@ -1582,12 +1632,18 @@ class _WorksScreenState extends State<WorksScreen> {
                             ),
                           if (taskToShow['toDo'] != null &&
                               taskToShow['toDo'].toString().isNotEmpty)
-                            _buildTaskInfoRow('Descripción', taskToShow['toDo'].toString()),
+                            _buildTaskInfoRow(
+                              'Descripción',
+                              taskToShow['toDo'].toString(),
+                            ),
 
                           // Información específica según tipo de conectividad
                           if (taskToShow['connectivity'] == 'Fibra óptica') ...[
                             if (taskToShow['buffers'] != null)
-                              _buildTaskInfoRow('Buffers', taskToShow['buffers'].toString()),
+                              _buildTaskInfoRow(
+                                'Buffers',
+                                taskToShow['buffers'].toString(),
+                              ),
                             if (taskToShow['bufferColor'] != null)
                               _buildTaskInfoRow(
                                 'Color Buffer',
@@ -1599,14 +1655,27 @@ class _WorksScreenState extends State<WorksScreen> {
                                 taskToShow['hairColor'].toString(),
                               ),
                             if (taskToShow['db'] != null)
-                              _buildTaskInfoRow('DB', taskToShow['db'].toString()),
-                          ] else if (taskToShow['connectivity'] == 'Enlace') ...[
+                              _buildTaskInfoRow(
+                                'DB',
+                                taskToShow['db'].toString(),
+                              ),
+                          ] else if (taskToShow['connectivity'] ==
+                              'Enlace') ...[
                             if (taskToShow['ap'] != null)
-                              _buildTaskInfoRow('AP', taskToShow['ap'].toString()),
+                              _buildTaskInfoRow(
+                                'AP',
+                                taskToShow['ap'].toString(),
+                              ),
                             if (taskToShow['st'] != null)
-                              _buildTaskInfoRow('ST', taskToShow['st'].toString()),
+                              _buildTaskInfoRow(
+                                'ST',
+                                taskToShow['st'].toString(),
+                              ),
                             if (taskToShow['ccq'] != null)
-                              _buildTaskInfoRow('CCQ', taskToShow['ccq'].toString()),
+                              _buildTaskInfoRow(
+                                'CCQ',
+                                taskToShow['ccq'].toString(),
+                              ),
                           ],
 
                           // Materiales utilizados
@@ -2419,16 +2488,17 @@ class _WorksScreenState extends State<WorksScreen> {
 
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => CreateReportScreen(
-          authManager: widget.authManager,
-          existingReportId: reportId,
-          isEditingExistingReport: true,
-          onNavigateToTab: (int tabIndex) {
-            // Pop back to works screen and refresh data
-            Navigator.of(context).pop();
-            _loadData(refresh: true);
-          },
-        ),
+        builder:
+            (context) => CreateReportScreen(
+              authManager: widget.authManager,
+              existingReportId: reportId,
+              isEditingExistingReport: true,
+              onNavigateToTab: (int tabIndex) {
+                // Pop back to works screen and refresh data
+                Navigator.of(context).pop();
+                _loadData(refresh: true);
+              },
+            ),
       ),
     );
   }
