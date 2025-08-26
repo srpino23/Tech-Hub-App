@@ -5,75 +5,73 @@ import '../auth_manager.dart';
 import '../services/techhub_api_client.dart';
 import '../services/location_service.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:image_picker/image_picker.dart';
-import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'dart:convert';
 import 'dart:async';
 
-// Clase especial para archivos web que simula un File
-class WebFileWrapper {
-  final Uint8List bytes;
-  final String fileName;
+// Clase universal para manejar archivos en todas las plataformas
+class UniversalFile {
+  final PlatformFile platformFile;
+  final String? name;
 
-  WebFileWrapper(this.bytes, this.fileName);
+  UniversalFile(this.platformFile, {this.name});
 
-  String get path => fileName;
-  Future<Uint8List> readAsBytes() async => bytes;
-  Uint8List readAsBytesSync() => bytes;
-  int lengthSync() => bytes.length;
-  Future<int> length() async => bytes.length;
-  String get absolute => fileName;
-}
+  bool get isValid =>
+      platformFile.bytes != null && platformFile.bytes!.isNotEmpty;
 
-// Clase para manejar imágenes de forma universal
-class UniversalImage {
-  final File? file; // Para móvil/desktop
-  final WebFileWrapper? webFile; // Para web
-  final String? name; // Nombre del archivo
+  String get displayName => name ?? platformFile.name;
 
-  UniversalImage({this.file, this.webFile, this.name});
+  // Getter para obtener los bytes
+  Uint8List get bytes => platformFile.bytes ?? Uint8List(0);
 
-  // Constructor para web
-  UniversalImage.fromBytes(Uint8List bytes, String fileName)
-    : file = null,
-      webFile = WebFileWrapper(bytes, fileName),
-      name = fileName;
+  // Getter para obtener el tamaño
+  int get size => platformFile.size;
 
-  // Constructor para móvil/desktop
-  UniversalImage.fromFile(this.file, String? fileName)
-    : webFile = null,
-      name = fileName ?? file!.path.split('/').last;
+  // Getter para obtener la extensión
+  String get extension => platformFile.extension ?? '';
 
-  bool get isValid => (kIsWeb && webFile != null) || (!kIsWeb && file != null);
-
-  String get displayName => name ?? 'imagen.jpg';
-
-  // Getter para obtener los bytes independientemente de la plataforma
-  Future<Uint8List> get bytes async {
-    if (kIsWeb && webFile != null) {
-      return webFile!.readAsBytes();
-    } else if (!kIsWeb && file != null) {
-      return file!.readAsBytes();
-    }
-    throw Exception('No hay archivo válido para leer bytes');
+  // Verificar si es una imagen
+  bool get isImage {
+    final imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
+    return imageExtensions.contains(extension.toLowerCase());
   }
 
   Widget buildImageWidget({required double width, required double height}) {
-    if (kIsWeb && webFile != null) {
+    if (isValid && isImage) {
       return Image.memory(
-        webFile!.bytes,
+        bytes,
         width: width,
         height: height,
         fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            width: width,
+            height: height,
+            color: Colors.grey[300],
+            child: Icon(Icons.error, color: Colors.grey[600]),
+          );
+        },
       );
-    } else if (!kIsWeb && file != null) {
-      return Image.file(file!, width: width, height: height, fit: BoxFit.cover);
     } else {
       return Container(
         width: width,
         height: height,
         color: Colors.grey[300],
-        child: Icon(Icons.error, color: Colors.grey[600]),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.insert_drive_file, color: Colors.grey[600], size: 32),
+            const SizedBox(height: 8),
+            Text(
+              extension.toUpperCase(),
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
       );
     }
   }
@@ -132,7 +130,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   bool _isLoadingMaterials = false;
 
   // Images
-  final List<UniversalImage> _selectedImages = [];
+  final List<UniversalFile> _selectedImages = [];
 
   // Type of work options
   final List<String> _typeOfWorkOptions = [
@@ -239,7 +237,9 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       );
 
       if (!teamInventoryResponse.isSuccess) {
-        throw Exception(teamInventoryResponse.error ?? 'Error cargando inventario del equipo');
+        throw Exception(
+          teamInventoryResponse.error ?? 'Error cargando inventario del equipo',
+        );
       }
 
       final teamMaterials = teamInventoryResponse.data ?? [];
@@ -253,7 +253,9 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         var materialName = teamMaterial['materialName']?.toString();
 
         // El materialName debería venir del inventario del equipo según tu estructura
-        if (materialId != null && materialName != null && materialName.isNotEmpty) {
+        if (materialId != null &&
+            materialName != null &&
+            materialName.isNotEmpty) {
           materialsWithNames.add({
             'materialId': materialId,
             'materialName': materialName,
@@ -262,9 +264,9 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         } else if (materialId != null) {
           // Fallback: si no hay materialName, buscar en inventarios principales
           await _loadMaterialNameFromInventories(
-            materialId, 
-            quantity, 
-            materialsWithNames
+            materialId,
+            quantity,
+            materialsWithNames,
           );
         }
       }
@@ -295,14 +297,17 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     try {
       // Cargar inventario principal para buscar el nombre
       final mainInventoryResponse = await TechHubApiClient.getInventory();
-      final recoveredInventoryResponse = await TechHubApiClient.getRecoveredInventory();
+      final recoveredInventoryResponse =
+          await TechHubApiClient.getRecoveredInventory();
 
-      final mainInventory = mainInventoryResponse.isSuccess
-          ? (mainInventoryResponse.data ?? [])
-          : <Map<String, dynamic>>[];
-      final recoveredInventory = recoveredInventoryResponse.isSuccess
-          ? (recoveredInventoryResponse.data ?? [])
-          : <Map<String, dynamic>>[];
+      final mainInventory =
+          mainInventoryResponse.isSuccess
+              ? (mainInventoryResponse.data ?? [])
+              : <Map<String, dynamic>>[];
+      final recoveredInventory =
+          recoveredInventoryResponse.isSuccess
+              ? (recoveredInventoryResponse.data ?? [])
+              : <Map<String, dynamic>>[];
 
       String? materialName;
 
@@ -318,7 +323,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       if (materialName == null || materialName.isEmpty) {
         for (var recoveredMaterial in recoveredInventory) {
           if (recoveredMaterial['_id']?.toString() == materialId) {
-            materialName = '${recoveredMaterial['name']?.toString()} (Recuperado)';
+            materialName =
+                '${recoveredMaterial['name']?.toString()} (Recuperado)';
             break;
           }
         }
@@ -362,14 +368,12 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   }
 
   List<dynamic> _convertUniversalImagesToFiles() {
-    // Convertir UniversalImage a lista de objetos que pueden ser manejados por TechHubApiClient
+    // Convertir UniversalFile a lista de objetos que pueden ser manejados por TechHubApiClient
     return _selectedImages
-        .map((img) {
-          if (kIsWeb && img.webFile != null) {
-            // Retornar WebFileWrapper que será detectado por runtime type checking en TechHubApiClient
-            return img.webFile!;
-          } else if (!kIsWeb && img.file != null) {
-            return img.file!;
+        .map((file) {
+          if (file.isValid) {
+            // Retornar PlatformFile que será detectado por runtime type checking en TechHubApiClient
+            return file.platformFile;
           }
           return null;
         })
@@ -379,154 +383,57 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
 
   void _pickImages() async {
     if (_selectedImages.length >= 4) {
-      _showError('Máximo 4 imágenes permitidas');
+      _showError('Máximo 4 archivos permitidos');
       return;
     }
 
-    if (kIsWeb) {
-      // En web, solo podemos seleccionar archivos de la galería
-      _pickImageFromSource(ImageSource.gallery);
-    } else {
-      // En móvil/desktop, mostramos las opciones completas
-      showModalBottomSheet(
-        context: context,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        builder:
-            (context) => SafeArea(
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[300],
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      'Seleccionar imagen',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey[800],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildImageSourceButton(
-                            icon: LucideIcons.camera,
-                            label: 'Cámara',
-                            onTap: () {
-                              Navigator.of(context).pop();
-                              _pickImageFromSource(ImageSource.camera);
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildImageSourceButton(
-                            icon: LucideIcons.image,
-                            label: 'Galería',
-                            onTap: () {
-                              Navigator.of(context).pop();
-                              _pickImageFromSource(ImageSource.gallery);
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                  ],
-                ),
-              ),
-            ),
-      );
-    }
-  }
-
-  Widget _buildImageSourceButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1E293B).withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: const Color(0xFF1E293B).withValues(alpha: 0.2),
-          ),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, size: 32, color: const Color(0xFF1E293B)),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey[700],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _pickImageFromSource(ImageSource source) async {
     try {
-      final ImagePicker picker = ImagePicker();
-      final XFile? image = await picker.pickImage(
-        source: source,
-        imageQuality: 85,
-        maxWidth: 1920,
-        maxHeight: 1080,
+      // Usar file_picker para seleccionar archivos
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: [
+          'jpg',
+          'jpeg',
+          'png',
+          'gif',
+          'bmp',
+          'webp',
+          'pdf',
+          'doc',
+          'docx',
+        ],
+        allowMultiple: true,
+        withData: true, // Importante: esto carga los bytes del archivo
       );
 
-      if (image != null && mounted) {
-        UniversalImage universalImage;
+      if (result != null && result.files.isNotEmpty) {
+        // Verificar que no excedamos el límite de 4 archivos
+        final remainingSlots = 4 - _selectedImages.length;
+        final filesToAdd = result.files.take(remainingSlots).toList();
 
-        if (kIsWeb) {
-          // En web, leemos los bytes de la imagen
-          final bytes = await image.readAsBytes();
-          universalImage = UniversalImage.fromBytes(bytes, image.name);
-        } else {
-          // En móvil/desktop, usamos el archivo
-          universalImage = UniversalImage.fromFile(
-            File(image.path),
-            image.name,
-          );
+        for (var platformFile in filesToAdd) {
+          if (platformFile.bytes != null && platformFile.bytes!.isNotEmpty) {
+            final universalFile = UniversalFile(platformFile);
+            if (universalFile.isValid) {
+              setState(() {
+                _selectedImages.add(universalFile);
+              });
+            }
+          }
         }
 
-        if (universalImage.isValid) {
-          setState(() {
-            _selectedImages.add(universalImage);
-          });
-          _onFormChanged();
+        _onFormChanged();
+
+        // Mostrar mensaje si no se pudieron agregar todos los archivos
+        if (filesToAdd.length < result.files.length) {
+          _showError(
+            'Solo se agregaron ${filesToAdd.length} archivos (máximo 4 permitidos)',
+          );
         }
       }
     } catch (e) {
       if (mounted) {
-        if (kIsWeb) {
-          _showError(
-            'Error seleccionando imagen en web: Asegúrate de seleccionar archivos de imagen válidos',
-          );
-        } else {
-          _showError('Error seleccionando imagen: $e');
-        }
+        _showError('Error seleccionando archivos: $e');
       }
     }
   }
@@ -2163,14 +2070,14 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
-                  LucideIcons.camera,
+                  LucideIcons.paperclip,
                   color: const Color(0xFF1E293B),
                   size: 20,
                 ),
               ),
               const SizedBox(width: 12),
               Text(
-                'Imágenes del Trabajo',
+                'Archivos Adjuntos',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
@@ -2185,11 +2092,9 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: _selectedImages.length < 4 ? _pickImages : null,
-              icon: Icon(LucideIcons.camera, size: 18),
+              icon: Icon(LucideIcons.upload, size: 18),
               label: Text(
-                kIsWeb
-                    ? 'Seleccionar Imagen (${_selectedImages.length}/4)'
-                    : 'Agregar Foto (${_selectedImages.length}/4)',
+                'Seleccionar Archivos (${_selectedImages.length}/4)',
                 style: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
@@ -2228,13 +2133,13 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   Row(
                     children: [
                       Icon(
-                        LucideIcons.image,
+                        LucideIcons.files,
                         size: 16,
                         color: Colors.grey[600],
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        'Fotos adjuntadas (${_selectedImages.length})',
+                        'Archivos adjuntados (${_selectedImages.length})',
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,

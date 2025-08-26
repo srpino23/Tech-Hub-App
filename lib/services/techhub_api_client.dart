@@ -203,26 +203,23 @@ class TechHubApiClient {
     try {
       // Get all teams and find the specific team by ID
       final response = await http
-          .get(
-            Uri.parse('$baseUrl/team/getTeams'),
-            headers: _jsonHeaders,
-          )
+          .get(Uri.parse('$baseUrl/team/getTeams'), headers: _jsonHeaders)
           .timeout(timeoutDuration);
 
       final result = _handleResponse<List<dynamic>>(
         response,
         (data) => List<dynamic>.from(data),
       );
-      
+
       if (result.isSuccess && result.data != null) {
         final teams = result.data!;
-        
+
         // Find the team with the matching ID
         final team = teams.firstWhere(
           (team) => team['_id']?.toString() == teamId,
           orElse: () => null,
         );
-        
+
         if (team != null && team['materials'] != null) {
           final materials = team['materials'] as List;
           return ApiResponse.success(
@@ -249,10 +246,7 @@ class TechHubApiClient {
           .post(
             Uri.parse('$baseUrl/report/createReport'),
             headers: _jsonHeaders,
-            body: json.encode({
-              'userId': userId,
-              'startTime': startTime,
-            }),
+            body: json.encode({'userId': userId, 'startTime': startTime}),
           )
           .timeout(timeoutDuration);
 
@@ -283,9 +277,7 @@ class TechHubApiClient {
     String? ccq,
   }) async {
     try {
-      final body = <String, dynamic>{
-        'reportId': reportId,
-      };
+      final body = <String, dynamic>{'reportId': reportId};
 
       if (status != null) body['status'] = status;
       if (teamId != null) body['teamId'] = teamId;
@@ -348,7 +340,7 @@ class TechHubApiClient {
       request.fields['reportId'] = reportId;
       request.fields['status'] = status;
       request.fields['teamId'] = teamId;
-      
+
       if (supplies != null) request.fields['supplies'] = supplies;
       if (toDo != null) request.fields['toDo'] = toDo;
       if (typeOfWork != null) request.fields['typeOfWork'] = typeOfWork;
@@ -368,13 +360,14 @@ class TechHubApiClient {
         for (int i = 0; i < images.length; i++) {
           final image = images[i];
           if (image is File) {
+            // Handle File objects (mobile/desktop)
             final file = await http.MultipartFile.fromPath(
               'images',
               image.path,
             );
             request.files.add(file);
           } else if (image.runtimeType.toString().contains('WebFileWrapper')) {
-            // Handle web files
+            // Handle legacy web files
             final bytes = await (image as dynamic).readAsBytes() as List<int>;
             final file = http.MultipartFile.fromBytes(
               'images',
@@ -382,6 +375,17 @@ class TechHubApiClient {
               filename: (image as dynamic).fileName as String,
             );
             request.files.add(file);
+          } else if (image.runtimeType.toString().contains('PlatformFile')) {
+            // Handle PlatformFile (new universal approach)
+            final platformFile = image as dynamic;
+            if (platformFile.bytes != null && platformFile.bytes.isNotEmpty) {
+              final file = http.MultipartFile.fromBytes(
+                'images',
+                platformFile.bytes as List<int>,
+                filename: platformFile.name as String,
+              );
+              request.files.add(file);
+            }
           }
         }
       }
