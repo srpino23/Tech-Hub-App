@@ -6,6 +6,7 @@ import '../services/techhub_api_client.dart';
 import '../services/location_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import 'dart:convert';
 import 'dart:async';
 
@@ -387,54 +388,219 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       return;
     }
 
+    if (kIsWeb) {
+      // En web, solo podemos seleccionar archivos de la galería
+      _pickFromGallery();
+    } else {
+      // En móvil/desktop, mostramos las opciones completas
+      showModalBottomSheet(
+        context: context,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder:
+            (context) => SafeArea(
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'Seleccionar Archivos',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[800],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildImageSourceButton(
+                            icon: LucideIcons.camera,
+                            label: 'Cámara',
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              _pickFromCamera();
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _buildImageSourceButton(
+                            icon: LucideIcons.image,
+                            label: 'Galería',
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              _pickFromGallery();
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildImageSourceButton(
+                            icon: LucideIcons.files,
+                            label: 'Documentos',
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              _pickDocuments();
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                ),
+              ),
+            ),
+      );
+    }
+  }
+
+  Widget _buildImageSourceButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E293B).withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: const Color(0xFF1E293B).withValues(alpha: 0.2),
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, size: 32, color: const Color(0xFF1E293B)),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[700],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _pickFromCamera() async {
     try {
-      // Usar file_picker para seleccionar archivos
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: [
-          'jpg',
-          'jpeg',
-          'png',
-          'gif',
-          'bmp',
-          'webp',
-          'pdf',
-          'doc',
-          'docx',
-        ],
-        allowMultiple: true,
-        withData: true, // Importante: esto carga los bytes del archivo
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 80,
       );
 
-      if (result != null && result.files.isNotEmpty) {
-        // Verificar que no excedamos el límite de 4 archivos
-        final remainingSlots = 4 - _selectedImages.length;
-        final filesToAdd = result.files.take(remainingSlots).toList();
+      if (image != null) {
+        final bytes = await image.readAsBytes();
+        final fileName = image.name;
 
-        for (var platformFile in filesToAdd) {
-          if (platformFile.bytes != null && platformFile.bytes!.isNotEmpty) {
-            final universalFile = UniversalFile(platformFile);
-            if (universalFile.isValid) {
-              setState(() {
-                _selectedImages.add(universalFile);
-              });
-            }
-          }
-        }
+        // Crear un PlatformFile simulado para mantener consistencia
+        final platformFile = PlatformFile(
+          name: fileName,
+          size: bytes.length,
+          bytes: bytes,
+        );
 
-        _onFormChanged();
-
-        // Mostrar mensaje si no se pudieron agregar todos los archivos
-        if (filesToAdd.length < result.files.length) {
-          _showError(
-            'Solo se agregaron ${filesToAdd.length} archivos (máximo 4 permitidos)',
-          );
+        final universalFile = UniversalFile(platformFile);
+        if (universalFile.isValid) {
+          setState(() {
+            _selectedImages.add(universalFile);
+          });
+          _onFormChanged();
         }
       }
     } catch (e) {
       if (mounted) {
-        _showError('Error seleccionando archivos: $e');
+        _showError('Error al tomar foto: $e');
       }
+    }
+  }
+
+  void _pickFromGallery() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'],
+        allowMultiple: true,
+        withData: true,
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        _processSelectedFiles(result.files);
+      }
+    } catch (e) {
+      if (mounted) {
+        _showError('Error seleccionando imágenes: $e');
+      }
+    }
+  }
+
+  void _pickDocuments() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'doc', 'docx', 'txt', 'xls', 'xlsx'],
+        allowMultiple: true,
+        withData: true,
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        _processSelectedFiles(result.files);
+      }
+    } catch (e) {
+      if (mounted) {
+        _showError('Error seleccionando documentos: $e');
+      }
+    }
+  }
+
+  void _processSelectedFiles(List<PlatformFile> files) {
+    // Verificar que no excedamos el límite de 4 archivos
+    final remainingSlots = 4 - _selectedImages.length;
+    final filesToAdd = files.take(remainingSlots).toList();
+
+    for (var platformFile in filesToAdd) {
+      if (platformFile.bytes != null && platformFile.bytes!.isNotEmpty) {
+        final universalFile = UniversalFile(platformFile);
+        if (universalFile.isValid) {
+          setState(() {
+            _selectedImages.add(universalFile);
+          });
+        }
+      }
+    }
+
+    _onFormChanged();
+
+    // Mostrar mensaje si no se pudieron agregar todos los archivos
+    if (filesToAdd.length < files.length) {
+      _showError(
+        'Solo se agregaron ${filesToAdd.length} archivos (máximo 4 permitidos)',
+      );
     }
   }
 
@@ -2094,7 +2260,9 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
               onPressed: _selectedImages.length < 4 ? _pickImages : null,
               icon: Icon(LucideIcons.upload, size: 18),
               label: Text(
-                'Seleccionar Archivos (${_selectedImages.length}/4)',
+                kIsWeb
+                    ? 'Seleccionar Archivos (${_selectedImages.length}/4)'
+                    : 'Agregar Archivos (${_selectedImages.length}/4)',
                 style: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,

@@ -30,22 +30,30 @@ class UniversalFile {
 }
 ```
 
-### 3. Método de Selección de Archivos Simplificado
+### 3. Método de Selección de Archivos Mejorado
 
 - **Antes**: Lógica compleja separada para web y móvil/desktop
-- **Ahora**: Un solo método `_pickImages()` que funciona en todas las plataformas
+- **Ahora**: Popup de selección con opciones para cámara, galería y documentos
 
 ```dart
 void _pickImages() async {
-  FilePickerResult? result = await FilePicker.platform.pickFiles(
-    type: FileType.custom,
-    allowedExtensions: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'pdf', 'doc', 'docx'],
-    allowMultiple: true,
-    withData: true,
-  );
-  // Procesamiento simplificado...
+  if (kIsWeb) {
+    // En web, solo galería
+    _pickFromGallery();
+  } else {
+    // En móvil/desktop, popup con opciones
+    showModalBottomSheet(
+      // Popup con botones: Cámara, Galería, Documentos
+    );
+  }
 }
 ```
+
+#### Opciones Disponibles:
+
+- **Cámara**: Tomar foto directamente
+- **Galería**: Seleccionar imágenes existentes
+- **Documentos**: Seleccionar PDFs, documentos, etc.
 
 ### 4. Mejoras en la UI
 
@@ -56,10 +64,16 @@ void _pickImages() async {
 
 ### 5. Funcionalidades Mejoradas
 
+#### Opciones de Captura/Selección
+
+- **Cámara**: Tomar fotos directamente desde la app
+- **Galería**: Seleccionar imágenes existentes
+- **Documentos**: Seleccionar archivos PDF, Word, Excel, etc.
+
 #### Tipos de Archivo Soportados
 
 - **Imágenes**: jpg, jpeg, png, gif, bmp, webp
-- **Documentos**: pdf, doc, docx
+- **Documentos**: pdf, doc, docx, txt, xls, xlsx
 - **Extensible**: Fácil agregar más tipos
 
 #### Validación Mejorada
@@ -173,7 +187,7 @@ void _pickImages() async {
 
 ```yaml
 file_picker: ^8.0.0+1 # Nueva dependencia universal
-image_picker: ^1.2.0 # Mantenida para compatibilidad (si es necesaria)
+image_picker: ^1.2.0 # Para funcionalidad de cámara
 ```
 
 ### Imports Requeridos
