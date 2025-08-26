@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import 'api_response.dart';
 
 class TechHubApiClient {
-  static const String baseUrl = 'http://172.25.67.77:1928/api';
+  static const String baseUrl = 'http://74280601d366.sn.mynetname.net/test/api';
   static const Duration timeoutDuration = Duration(seconds: 30);
 
   static const Map<String, String> _jsonHeaders = {

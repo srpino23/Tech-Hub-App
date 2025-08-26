@@ -12,7 +12,7 @@ class LocationService {
   Position? _lastKnownPosition;
 
   static const String _updateLocationUrl =
-      'http://172.25.67.77:1928/api/user/updateUserLocation';
+      'http://74280601d366.sn.mynetname.net/test/api/user/updateUserLocation';
 
   // Update interval: every 30 seconds
   static const Duration _updateInterval = Duration(seconds: 30);

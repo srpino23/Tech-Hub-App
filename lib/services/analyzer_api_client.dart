@@ -4,7 +4,8 @@ import 'package:http/http.dart' as http;
 import 'api_response.dart';
 
 class AnalyzerApiClient {
-  static const String baseUrl = 'http://74280601d366.sn.mynetname.net:2300/api';
+  static const String baseUrl =
+      'http://74280601d366.sn.mynetname.net/analyzer/api';
   static const String cameraEndpoint = '$baseUrl/camera';
   static const String serverEndpoint = '$baseUrl/server';
   static const Duration timeoutDuration = Duration(seconds: 30);
