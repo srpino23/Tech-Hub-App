@@ -3,7 +3,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'dart:async';
 import '../auth_manager.dart';
 import '../services/techhub_api_client.dart';
-// TODO luego import 'create_report_screen.dart';
+import 'create_report_screen.dart';
 
 class WorksScreen extends StatefulWidget {
   final AuthManager authManager;
@@ -1017,8 +1017,7 @@ class _WorksScreenState extends State<WorksScreen> {
                         if (_selectedSection == 'remitos' &&
                             task['status'] != 'completed' &&
                             task['_id'] != null) {
-                          // TODO: Implementar navegación a CreateReportScreen cuando esté disponible
-                          _showTaskDetail(task);
+                          _navigateToEditReport(task);
                         } else {
                           _showTaskDetail(task);
                         }
@@ -1067,8 +1066,7 @@ class _WorksScreenState extends State<WorksScreen> {
                           if (_selectedSection == 'remitos' &&
                               task['status'] != 'completed' &&
                               task['_id'] != null) {
-                            // TODO: Implementar navegación a CreateReportScreen cuando esté disponible
-                            _showTaskDetail(task);
+                            _navigateToEditReport(task);
                           } else {
                             _showTaskDetail(task);
                           }
@@ -2319,5 +2317,33 @@ class _WorksScreenState extends State<WorksScreen> {
     }
 
     return materialsData;
+  }
+
+  void _navigateToEditReport(Map<String, dynamic> report) {
+    final reportId = report['_id']?.toString();
+    if (reportId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Error: No se encontró el ID del reporte'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => CreateReportScreen(
+          authManager: widget.authManager,
+          existingReportId: reportId,
+          isEditingExistingReport: true,
+          onNavigateToTab: (int tabIndex) {
+            // Pop back to works screen and refresh data
+            Navigator.of(context).pop();
+            _loadData(refresh: true);
+          },
+        ),
+      ),
+    );
   }
 }
