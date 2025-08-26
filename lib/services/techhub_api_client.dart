@@ -122,70 +122,6 @@ class TechHubApiClient {
     }
   }
 
-  static Future<ApiResponse<Map<String, dynamic>>> getReportById({
-    required String reportId,
-  }) async {
-    try {
-      final response = await http
-          .get(
-            Uri.parse('$baseUrl/report/getReportById/$reportId'),
-            headers: _jsonHeaders,
-          )
-          .timeout(timeoutDuration);
-
-      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
-    } catch (e) {
-      return ApiResponse.error(_getErrorMessage(e));
-    }
-  }
-
-  static Future<ApiResponse<Map<String, dynamic>>> searchTasks({
-    required String status,
-    required String title,
-    required String teamId,
-    required int page,
-    required int limit,
-  }) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/task/searchTasks?page=$page&limit=$limit'),
-            headers: _jsonHeaders,
-            body: json.encode({
-              'status': status,
-              'title': title,
-              'teamId': teamId,
-            }),
-          )
-          .timeout(timeoutDuration);
-
-      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
-    } catch (e) {
-      return ApiResponse.error(_getErrorMessage(e));
-    }
-  }
-
-  static Future<ApiResponse<Map<String, dynamic>>> searchReports({
-    required String status,
-    required String userId,
-    required int page,
-    required int limit,
-  }) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/report/searchReports?page=$page&limit=$limit'),
-            headers: _jsonHeaders,
-            body: json.encode({'status': status, 'userId': userId}),
-          )
-          .timeout(timeoutDuration);
-
-      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
-    } catch (e) {
-      return ApiResponse.error(_getErrorMessage(e));
-    }
-  }
-
   static Future<ApiResponse<List<Map<String, dynamic>>>> getInventory() async {
     try {
       final response = await http
@@ -209,7 +145,7 @@ class TechHubApiClient {
     try {
       final response = await http
           .get(
-            Uri.parse('$baseUrl/inventory/getRecoveredInventory'),
+            Uri.parse('$baseUrl/recoveredInventory/getRecoveredInventory'),
             headers: _jsonHeaders,
           )
           .timeout(timeoutDuration);
