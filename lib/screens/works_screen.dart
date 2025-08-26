@@ -3,6 +3,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'dart:async';
 import '../auth_manager.dart';
 import '../services/techhub_api_client.dart';
+import '../services/api_response.dart';
 import 'create_report_screen.dart';
 
 class WorksScreen extends StatefulWidget {
@@ -27,6 +28,10 @@ class _WorksScreenState extends State<WorksScreen> {
 
   // Cache para materiales para evitar múltiples llamadas
   final Map<String, Map<String, dynamic>?> _materialsCache = {};
+  
+  // Cache para usuarios para evitar múltiples llamadas
+  List<Map<String, dynamic>> _users = [];
+  bool _isUsersLoaded = false;
 
   // Cache para inventarios completos (solo se cargan una vez)
   List<Map<String, dynamic>>? _mainInventoryCache;
@@ -97,7 +102,7 @@ class _WorksScreenState extends State<WorksScreen> {
       _tasks.clear();
       _reports.clear();
     }
-    await Future.wait([_loadTasks(), _loadReports()]);
+    await Future.wait([_loadUsers(), _loadTasks(), _loadReports()]);
   }
 
   Future<void> _loadTasks({bool loadMore = false}) async {
@@ -113,16 +118,29 @@ class _WorksScreenState extends State<WorksScreen> {
         _isLoadingTasks = true;
       });
 
-      final teamId = await _getTeamId();
-      if (teamId == null) {
-        throw Exception('No se pudo obtener el ID del equipo');
-      }
+      final isET = await _isETTeam();
+      
+      late ApiResponse<Map<String, dynamic>> response;
+      
+      if (isET) {
+        // ET team can see all tasks
+        response = await TechHubApiClient.getAllTasks(
+          page: loadMore ? _currentTasksPage + 1 : _currentTasksPage,
+          limit: _pageSize,
+        );
+      } else {
+        // Regular teams see only their tasks
+        final teamId = await _getTeamId();
+        if (teamId == null) {
+          throw Exception('No se pudo obtener el ID del equipo');
+        }
 
-      final response = await TechHubApiClient.getTasksByTeam(
-        teamId: teamId,
-        page: loadMore ? _currentTasksPage + 1 : _currentTasksPage,
-        limit: _pageSize,
-      );
+        response = await TechHubApiClient.getTasksByTeam(
+          teamId: teamId,
+          page: loadMore ? _currentTasksPage + 1 : _currentTasksPage,
+          limit: _pageSize,
+        );
+      }
 
       if (!mounted) return;
 
@@ -181,21 +199,34 @@ class _WorksScreenState extends State<WorksScreen> {
         _isLoadingReports = true;
       });
 
-      final teamId = await _getTeamId();
-      if (teamId == null) {
-        throw Exception('No se pudo obtener el ID del equipo');
-      }
+      final isET = await _isETTeam();
+      
+      late ApiResponse<Map<String, dynamic>> response;
+      
+      if (isET) {
+        // ET team can see all reports
+        response = await TechHubApiClient.getAllReports(
+          page: loadMore ? _currentReportsPage + 1 : _currentReportsPage,
+          limit: _pageSize,
+        );
+      } else {
+        // Regular teams see only their reports
+        final teamId = await _getTeamId();
+        if (teamId == null) {
+          throw Exception('No se pudo obtener el ID del equipo');
+        }
 
-      final userId = widget.authManager.userId;
-      if (userId == null) {
-        throw Exception('No se pudo obtener el ID del usuario');
-      }
+        final userId = widget.authManager.userId;
+        if (userId == null) {
+          throw Exception('No se pudo obtener el ID del usuario');
+        }
 
-      final response = await TechHubApiClient.getReportsByTeam(
-        teamId: teamId,
-        page: loadMore ? _currentReportsPage + 1 : _currentReportsPage,
-        limit: _pageSize,
-      );
+        response = await TechHubApiClient.getReportsByTeam(
+          teamId: teamId,
+          page: loadMore ? _currentReportsPage + 1 : _currentReportsPage,
+          limit: _pageSize,
+        );
+      }
 
       if (!mounted) return;
 
@@ -209,20 +240,28 @@ class _WorksScreenState extends State<WorksScreen> {
       final int totalPages = pagination['totalPages'];
       final bool hasNextPage = pagination['hasNextPage'];
 
-      // Filtrar solo los remitos del usuario actual
-      final userReports =
-          allReports.where((report) {
-            return report['userId'] != null &&
-                report['userId'].toString() == userId.toString();
-          }).toList();
+      // Filtrar solo los remitos del usuario actual para equipos no-ET
+      List<Map<String, dynamic>> filteredReports;
+      
+      if (isET) {
+        // ET team sees all reports
+        filteredReports = allReports;
+      } else {
+        // Regular teams see only their user's reports
+        final userId = widget.authManager.userId;
+        filteredReports = allReports.where((report) {
+          return report['userId'] != null &&
+              report['userId'].toString() == userId.toString();
+        }).toList();
+      }
 
       if (mounted) {
         setState(() {
           if (loadMore) {
-            _reports.addAll(userReports);
+            _reports.addAll(filteredReports);
             _currentReportsPage++;
           } else {
-            _reports = userReports;
+            _reports = filteredReports;
           }
           _reportsTotal = total;
           _reportsTotalPages = totalPages;
@@ -255,6 +294,42 @@ class _WorksScreenState extends State<WorksScreen> {
     return widget.authManager.teamId;
   }
 
+  Future<bool> _isETTeam() async {
+    final teamName = widget.authManager.teamName;
+    return teamName?.toLowerCase() == 'et';
+  }
+
+  Future<void> _loadUsers() async {
+    if (_isUsersLoaded) return; // Ya están cargados
+    
+    try {
+      final response = await TechHubApiClient.getUsers();
+      
+      if (response.isSuccess && response.data != null) {
+        _users = response.data!;
+        _isUsersLoaded = true;
+      }
+    } catch (e) {
+      // Silenciar errores de carga de usuarios para no interrumpir la funcionalidad principal
+      debugPrint('Error loading users: $e');
+    }
+  }
+
+  String _getUserNameById(String userId) {
+    final user = _users.firstWhere(
+      (user) => user['_id']?.toString() == userId,
+      orElse: () => <String, dynamic>{},
+    );
+    
+    if (user.isNotEmpty) {
+      final name = user['name']?.toString() ?? '';
+      final surname = user['surname']?.toString() ?? '';
+      return '$name $surname'.trim();
+    }
+    
+    return 'Usuario desconocido';
+  }
+
   Future<void> _searchData() async {
     try {
       if (!mounted) return;
@@ -263,13 +338,18 @@ class _WorksScreenState extends State<WorksScreen> {
         _isSearching = true;
       });
 
-      final teamId = await _getTeamId();
-      if (teamId == null) {
-        throw Exception('No se pudo obtener el ID del equipo');
+      final isET = await _isETTeam();
+      
+      if (!isET) {
+        final teamId = await _getTeamId();
+        if (teamId == null) {
+          throw Exception('No se pudo obtener el ID del equipo');
+        }
       }
 
       // Para la búsqueda, simplemente filtraremos los datos ya cargados localmente
       // ya que la nueva API no tiene endpoints específicos de búsqueda
+      // ET team will search through all loaded data, regular teams through their own
       if (mounted) {
         setState(() {
           _filterTasks();
@@ -592,6 +672,7 @@ class _WorksScreenState extends State<WorksScreen> {
             ),
           ),
         ),
+        
         // Section selector (Tareas / Remitos)
         Container(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -1337,7 +1418,12 @@ class _WorksScreenState extends State<WorksScreen> {
 
   String _getTaskTitle(Map<String, dynamic> task) {
     if (_selectedSection == 'remitos') {
-      return widget.authManager.userFullName ?? 'Usuario';
+      // Para reportes, mostrar el nombre del propietario real del reporte
+      final userId = task['userId']?.toString();
+      if (userId != null) {
+        return _getUserNameById(userId);
+      }
+      return 'Usuario desconocido';
     }
     return task['title']?.toString() ?? 'Sin título';
   }

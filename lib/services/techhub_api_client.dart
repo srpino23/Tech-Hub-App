@@ -122,6 +122,44 @@ class TechHubApiClient {
     }
   }
 
+  // Get ALL tasks (for ET team)
+  static Future<ApiResponse<Map<String, dynamic>>> getAllTasks({
+    required int page,
+    required int limit,
+  }) async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/task/getTasks?page=$page&limit=$limit'),
+            headers: _jsonHeaders,
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  // Get ALL reports (for ET team)
+  static Future<ApiResponse<Map<String, dynamic>>> getAllReports({
+    required int page,
+    required int limit,
+  }) async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/report/getReports?page=$page&limit=$limit'),
+            headers: _jsonHeaders,
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
   static Future<ApiResponse<List<Map<String, dynamic>>>> getInventory() async {
     try {
       final response = await http
