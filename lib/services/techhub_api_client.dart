@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:file_picker/file_picker.dart';
 import 'api_response.dart';
 
 class TechHubApiClient {
-  static const String baseUrl = 'http://74280601d366.sn.mynetname.net/test/api';
+  static const String baseUrl =
+      'https://74280601d366.sn.mynetname.net/test/api';
   static const Duration timeoutDuration = Duration(seconds: 30);
 
   static const Map<String, String> _jsonHeaders = {
@@ -375,14 +377,14 @@ class TechHubApiClient {
               filename: (image as dynamic).fileName as String,
             );
             request.files.add(file);
-          } else if (image.runtimeType.toString().contains('PlatformFile')) {
+          } else if (image is PlatformFile) {
             // Handle PlatformFile (new universal approach)
-            final platformFile = image as dynamic;
-            if (platformFile.bytes != null && platformFile.bytes.isNotEmpty) {
+            final platformFile = image;
+            if (platformFile.bytes != null && platformFile.bytes!.isNotEmpty) {
               final file = http.MultipartFile.fromBytes(
                 'images',
-                platformFile.bytes as List<int>,
-                filename: platformFile.name as String,
+                platformFile.bytes!,
+                filename: platformFile.name,
               );
               request.files.add(file);
             }

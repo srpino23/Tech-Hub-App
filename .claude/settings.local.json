@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(dart analyze:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(flutter build:*)",
+      "Bash(/mnt/c/src/flutter/bin/flutter build web)",
+      "Bash(cp:*)"
     ],
     "deny": [],
     "ask": []
