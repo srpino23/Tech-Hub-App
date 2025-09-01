@@ -6,6 +6,7 @@ import 'profile_screen.dart';
 import 'map_screen.dart';
 import 'works_screen.dart';
 import 'create_report_screen.dart';
+import 'dashboard_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final AuthManager authManager;
@@ -23,7 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (widget.authManager.teamName == 'et') {
       switch (_currentIndex) {
         case 0:
-          return const _PlaceholderScreen(title: 'Dashboard');
+          return DashboardScreen(authManager: widget.authManager);
         case 1:
           return MapScreen(authManager: widget.authManager);
         case 2:
@@ -33,7 +34,7 @@ class _HomeScreenState extends State<HomeScreen> {
         case 4:
           return ProfileScreen(authManager: widget.authManager);
         default:
-          return const _PlaceholderScreen(title: 'Dashboard');
+          return DashboardScreen(authManager: widget.authManager);
       }
     } else {
       switch (_currentIndex) {

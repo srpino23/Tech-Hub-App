@@ -106,13 +106,17 @@ class TechHubApiClient {
     required String teamId,
     required int page,
     required int limit,
+    String? userId, // Nuevo parámetro opcional para filtrar por usuario específico
   }) async {
     try {
+      String url = '$baseUrl/report/getReportsByTeam?page=$page&limit=$limit';
+      if (userId != null) {
+        url += '&userId=$userId';
+      }
+
       final response = await http
           .post(
-            Uri.parse(
-              '$baseUrl/report/getReportsByTeam?page=$page&limit=$limit',
-            ),
+            Uri.parse(url),
             headers: _jsonHeaders,
             body: json.encode({'teamId': teamId}),
           )

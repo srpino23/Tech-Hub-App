@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'dart:async';
+import 'package:flutter/services.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import '../auth_manager.dart';
 import '../services/techhub_api_client.dart';
 import '../services/api_response.dart';
@@ -38,17 +41,12 @@ class _WorksScreenState extends State<WorksScreen> {
   List<Map<String, dynamic>>? _recoveredInventoryCache;
   bool _inventoriesLoaded = false;
 
-  // Pagination
-  int _currentTasksPage = 1;
-  int _currentReportsPage = 1;
-  bool _hasMoreTasks = true;
-  bool _hasMoreReports = true;
+  // Loading state
   int _tasksTotal = 0;
   int _reportsTotal = 0;
-  int _tasksTotalPages = 1;
-  int _reportsTotalPages = 1;
-  final int _pageSize = 10;
-  bool _showPaginationButtons = false;
+  bool _isLoadingAllTasks = false;
+  bool _isLoadingAllReports = false;
+  final int _initialLoadSize = 20; // Cargar los primeros 20 elementos rápido
 
   // Search
   final TextEditingController _searchController = TextEditingController();
@@ -95,10 +93,6 @@ class _WorksScreenState extends State<WorksScreen> {
 
   Future<void> _loadData({bool refresh = false}) async {
     if (refresh) {
-      _currentTasksPage = 1;
-      _currentReportsPage = 1;
-      _hasMoreTasks = true;
-      _hasMoreReports = true;
       _tasks.clear();
       _reports.clear();
     }
@@ -106,35 +100,32 @@ class _WorksScreenState extends State<WorksScreen> {
     // Cargar usuarios primero para que estén disponibles cuando se carguen los reportes
     await _loadUsers();
 
-    // Luego cargar tareas y reportes en paralelo
-    await Future.wait([_loadTasks(), _loadReports()]);
+    // Cargar datos iniciales rápido, luego el resto en segundo plano
+    await Future.wait([_loadTasksInitial(), _loadReportsInitial()]);
+
+    // Después cargar todo en segundo plano
+    _loadAllDataInBackground();
   }
 
-  Future<void> _loadTasks({bool loadMore = false}) async {
+  // Carga inicial rápida de tareas (primeros elementos)
+  Future<void> _loadTasksInitial() async {
     try {
       if (!mounted) return;
 
-      if (!loadMore && !_hasMoreTasks) return;
-
       setState(() {
-        if (!loadMore) {
-          _isLoading = true;
-        }
+        _isLoading = true;
         _isLoadingTasks = true;
       });
 
       final isET = await _isETTeam();
-
       late ApiResponse<Map<String, dynamic>> response;
 
       if (isET) {
-        // ET team can see all tasks
         response = await TechHubApiClient.getAllTasks(
-          page: loadMore ? _currentTasksPage + 1 : _currentTasksPage,
-          limit: _pageSize,
+          page: 1,
+          limit: _initialLoadSize,
         );
       } else {
-        // Regular teams see only their tasks
         final teamId = await _getTeamId();
         if (teamId == null) {
           throw Exception('No se pudo obtener el ID del equipo');
@@ -142,8 +133,8 @@ class _WorksScreenState extends State<WorksScreen> {
 
         response = await TechHubApiClient.getTasksByTeam(
           teamId: teamId,
-          page: loadMore ? _currentTasksPage + 1 : _currentTasksPage,
-          limit: _pageSize,
+          page: 1,
+          limit: _initialLoadSize,
         );
       }
 
@@ -153,24 +144,15 @@ class _WorksScreenState extends State<WorksScreen> {
         throw Exception(response.error ?? 'Failed to load tasks');
       }
 
-      final List<Map<String, dynamic>> newTasks =
+      final List<Map<String, dynamic>> initialTasks =
           List<Map<String, dynamic>>.from(response.data!['tasks']);
       final Map<String, dynamic> pagination = response.data!['pagination'];
       final int total = pagination['totalItems'];
-      final int totalPages = pagination['totalPages'];
-      final bool hasNextPage = pagination['hasNextPage'];
 
       if (mounted) {
         setState(() {
-          if (loadMore) {
-            _tasks.addAll(newTasks);
-            _currentTasksPage++;
-          } else {
-            _tasks = newTasks;
-          }
+          _tasks = initialTasks;
           _tasksTotal = total;
-          _tasksTotalPages = totalPages;
-          _hasMoreTasks = hasNextPage;
           _filterTasks();
           _isLoadingTasks = false;
           if (!_isLoadingReports && _isUsersLoaded) {
@@ -186,8 +168,6 @@ class _WorksScreenState extends State<WorksScreen> {
             _isLoading = false;
           }
         });
-      }
-      if (mounted) {
         _showGlobalError(
           'Error de conexión al cargar tareas. Verifique su conexión a internet.',
         );
@@ -195,28 +175,24 @@ class _WorksScreenState extends State<WorksScreen> {
     }
   }
 
-  Future<void> _loadReports({bool loadMore = false}) async {
+  // Carga inicial rápida de reportes (primeros elementos)
+  Future<void> _loadReportsInitial() async {
     try {
       if (!mounted) return;
-
-      if (!loadMore && !_hasMoreReports) return;
 
       setState(() {
         _isLoadingReports = true;
       });
 
       final isET = await _isETTeam();
-
       late ApiResponse<Map<String, dynamic>> response;
 
       if (isET) {
-        // ET team can see all reports
         response = await TechHubApiClient.getAllReports(
-          page: loadMore ? _currentReportsPage + 1 : _currentReportsPage,
-          limit: _pageSize,
+          page: 1,
+          limit: _initialLoadSize,
         );
       } else {
-        // Regular teams see only their reports
         final teamId = await _getTeamId();
         if (teamId == null) {
           throw Exception('No se pudo obtener el ID del equipo');
@@ -229,8 +205,9 @@ class _WorksScreenState extends State<WorksScreen> {
 
         response = await TechHubApiClient.getReportsByTeam(
           teamId: teamId,
-          page: loadMore ? _currentReportsPage + 1 : _currentReportsPage,
-          limit: _pageSize,
+          page: 1,
+          limit: _initialLoadSize,
+          userId: widget.authManager.userId,
         );
       }
 
@@ -240,40 +217,15 @@ class _WorksScreenState extends State<WorksScreen> {
         throw Exception(response.error ?? 'Failed to load reports');
       }
 
-      final List<Map<String, dynamic>> allReports =
+      final List<Map<String, dynamic>> initialReports =
           List<Map<String, dynamic>>.from(response.data!['reports']);
       final Map<String, dynamic> pagination = response.data!['pagination'];
       final int total = pagination['totalItems'];
-      final int totalPages = pagination['totalPages'];
-      final bool hasNextPage = pagination['hasNextPage'];
-
-      // Filtrar solo los remitos del usuario actual para equipos no-ET
-      List<Map<String, dynamic>> filteredReports;
-
-      if (isET) {
-        // ET team sees all reports
-        filteredReports = allReports;
-      } else {
-        // Regular teams see only their user's reports
-        final userId = widget.authManager.userId;
-        filteredReports =
-            allReports.where((report) {
-              return report['userId'] != null &&
-                  report['userId'].toString() == userId.toString();
-            }).toList();
-      }
 
       if (mounted) {
         setState(() {
-          if (loadMore) {
-            _reports.addAll(filteredReports);
-            _currentReportsPage++;
-          } else {
-            _reports = filteredReports;
-          }
+          _reports = initialReports;
           _reportsTotal = total;
-          _reportsTotalPages = totalPages;
-          _hasMoreReports = hasNextPage;
           _filterTasks();
           _isLoadingReports = false;
           if (!_isLoadingTasks && _isUsersLoaded) {
@@ -289,11 +241,169 @@ class _WorksScreenState extends State<WorksScreen> {
             _isLoading = false;
           }
         });
-      }
-      if (mounted) {
         _showGlobalError(
           'Error de conexión al cargar remitos. Verifique su conexión a internet.',
         );
+      }
+    }
+  }
+
+  // Carga completa en segundo plano
+  // Esta función inicia la carga progresiva de todos los datos después de mostrar los primeros elementos
+  void _loadAllDataInBackground() {
+    // Cargar todas las tareas en segundo plano
+    _loadAllTasksInBackground();
+
+    // Cargar todos los reportes en segundo plano
+    _loadAllReportsInBackground();
+  }
+
+  Future<void> _loadAllTasksInBackground() async {
+    if (_isLoadingAllTasks || _tasksTotal <= _initialLoadSize) return;
+
+    setState(() {
+      _isLoadingAllTasks = true;
+    });
+
+    try {
+      final isET = await _isETTeam();
+      final int totalPages =
+          (_tasksTotal / 100).ceil(); // Usar páginas de 100 elementos
+      List<Map<String, dynamic>> allTasks = List.from(_tasks);
+
+      for (int page = 1; page <= totalPages; page++) {
+        if (!mounted) break;
+
+        late ApiResponse<Map<String, dynamic>> response;
+
+        if (isET) {
+          response = await TechHubApiClient.getAllTasks(page: page, limit: 100);
+        } else {
+          final teamId = await _getTeamId();
+          if (teamId == null) continue;
+
+          response = await TechHubApiClient.getTasksByTeam(
+            teamId: teamId,
+            page: page,
+            limit: 100,
+          );
+        }
+
+        if (response.isSuccess) {
+          final List<Map<String, dynamic>> pageTasks =
+              List<Map<String, dynamic>>.from(response.data!['tasks']);
+
+          // Evitar duplicados
+          for (var task in pageTasks) {
+            if (!allTasks.any((existing) => existing['_id'] == task['_id'])) {
+              allTasks.add(task);
+            }
+          }
+
+          // Actualizar UI periódicamente
+          if (mounted && page % 2 == 0) {
+            // Cada 2 páginas
+            setState(() {
+              _tasks = allTasks;
+              _filterTasks();
+            });
+          }
+        }
+
+        // Pequeña pausa para no sobrecargar
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+
+      if (mounted) {
+        setState(() {
+          _tasks = allTasks;
+          _filterTasks();
+          _isLoadingAllTasks = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingAllTasks = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadAllReportsInBackground() async {
+    if (_isLoadingAllReports || _reportsTotal <= _initialLoadSize) return;
+
+    setState(() {
+      _isLoadingAllReports = true;
+    });
+
+    try {
+      final isET = await _isETTeam();
+      final int totalPages =
+          (_reportsTotal / 100).ceil(); // Usar páginas de 100 elementos
+      List<Map<String, dynamic>> allReports = List.from(_reports);
+
+      for (int page = 1; page <= totalPages; page++) {
+        if (!mounted) break;
+
+        late ApiResponse<Map<String, dynamic>> response;
+
+        if (isET) {
+          response = await TechHubApiClient.getAllReports(
+            page: page,
+            limit: 100,
+          );
+        } else {
+          final teamId = await _getTeamId();
+          if (teamId == null) continue;
+
+          response = await TechHubApiClient.getReportsByTeam(
+            teamId: teamId,
+            page: page,
+            limit: 100,
+            userId: widget.authManager.userId,
+          );
+        }
+
+        if (response.isSuccess) {
+          final List<Map<String, dynamic>> pageReports =
+              List<Map<String, dynamic>>.from(response.data!['reports']);
+
+          // Evitar duplicados
+          for (var report in pageReports) {
+            if (!allReports.any(
+              (existing) => existing['_id'] == report['_id'],
+            )) {
+              allReports.add(report);
+            }
+          }
+
+          // Actualizar UI periódicamente
+          if (mounted && page % 2 == 0) {
+            // Cada 2 páginas
+            setState(() {
+              _reports = allReports;
+              _filterTasks();
+            });
+          }
+        }
+
+        // Pequeña pausa para no sobrecargar
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+
+      if (mounted) {
+        setState(() {
+          _reports = allReports;
+          _filterTasks();
+          _isLoadingAllReports = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingAllReports = false;
+        });
       }
     }
   }
@@ -410,16 +520,39 @@ class _WorksScreenState extends State<WorksScreen> {
       _filteredTasks =
           _reports.where((report) {
             final matchesStatus = report['status'] == _selectedStatus;
-            final matchesSearch =
-                _searchQuery.isEmpty ||
-                (report['typeOfWork']?.toString().toLowerCase().contains(
-                      _searchQuery.toLowerCase(),
-                    ) ??
-                    false) ||
-                (report['toDo']?.toString().toLowerCase().contains(
-                      _searchQuery.toLowerCase(),
-                    ) ??
-                    false);
+
+            if (_searchQuery.isEmpty) {
+              return matchesStatus;
+            }
+
+            final searchLower = _searchQuery.toLowerCase();
+            bool matchesSearch = false;
+
+            // Buscar en campos del reporte
+            final typeOfWork = report['typeOfWork']?.toString().toLowerCase();
+            final toDo = report['toDo']?.toString().toLowerCase();
+            final location = report['location']?.toString().toLowerCase();
+            final connectivity =
+                report['connectivity']?.toString().toLowerCase();
+
+            if ((typeOfWork?.contains(searchLower) ?? false) ||
+                (toDo?.contains(searchLower) ?? false) ||
+                (location?.contains(searchLower) ?? false) ||
+                (connectivity?.contains(searchLower) ?? false)) {
+              matchesSearch = true;
+            }
+
+            // Buscar por nombre de usuario
+            if (!matchesSearch) {
+              final userId = report['userId']?.toString();
+              if (userId != null && _isUsersLoaded) {
+                final userName = _getUserNameById(userId);
+                if (userName.toLowerCase().contains(searchLower)) {
+                  matchesSearch = true;
+                }
+              }
+            }
+
             return matchesStatus && matchesSearch;
           }).toList();
     }
@@ -449,97 +582,6 @@ class _WorksScreenState extends State<WorksScreen> {
 
     if (_searchQuery.isNotEmpty) {
       _searchData();
-    }
-  }
-
-  void _loadMore() {
-    if (_selectedSection == 'tareas' && _hasMoreTasks && !_isLoadingTasks) {
-      _loadTasks(loadMore: true);
-    } else if (_selectedSection == 'remitos' &&
-        _hasMoreReports &&
-        !_isLoadingReports &&
-        _isUsersLoaded) {
-      _loadReports(loadMore: true);
-    }
-  }
-
-  void _goToNextPage() {
-    if (_selectedSection == 'tareas') {
-      if (_currentTasksPage < _tasksTotalPages && !_isLoadingTasks) {
-        setState(() {
-          _currentTasksPage++;
-          _tasks.clear();
-        });
-        _loadTasks();
-      }
-    } else {
-      if (_currentReportsPage < _reportsTotalPages && !_isLoadingReports) {
-        setState(() {
-          _currentReportsPage++;
-          _reports.clear();
-        });
-        _loadReports();
-      }
-    }
-  }
-
-  void _goToPreviousPage() {
-    if (_selectedSection == 'tareas') {
-      if (_currentTasksPage > 1 && !_isLoadingTasks) {
-        setState(() {
-          _currentTasksPage--;
-          _tasks.clear();
-        });
-        _loadTasks();
-      }
-    } else {
-      if (_currentReportsPage > 1 && !_isLoadingReports) {
-        setState(() {
-          _currentReportsPage--;
-          _reports.clear();
-        });
-        _loadReports();
-      }
-    }
-  }
-
-  void _goToFirstPage() {
-    if (_selectedSection == 'tareas') {
-      if (_currentTasksPage != 1 && !_isLoadingTasks) {
-        setState(() {
-          _currentTasksPage = 1;
-          _tasks.clear();
-        });
-        _loadTasks();
-      }
-    } else {
-      if (_currentReportsPage != 1 && !_isLoadingReports) {
-        setState(() {
-          _currentReportsPage = 1;
-          _reports.clear();
-        });
-        _loadReports();
-      }
-    }
-  }
-
-  void _goToLastPage() {
-    if (_selectedSection == 'tareas') {
-      if (_currentTasksPage != _tasksTotalPages && !_isLoadingTasks) {
-        setState(() {
-          _currentTasksPage = _tasksTotalPages;
-          _tasks.clear();
-        });
-        _loadTasks();
-      }
-    } else {
-      if (_currentReportsPage != _reportsTotalPages && !_isLoadingReports) {
-        setState(() {
-          _currentReportsPage = _reportsTotalPages;
-          _reports.clear();
-        });
-        _loadReports();
-      }
     }
   }
 
@@ -649,7 +691,7 @@ class _WorksScreenState extends State<WorksScreen> {
                 hintText:
                     _selectedSection == 'tareas'
                         ? 'Buscar tareas...'
-                        : 'Buscar remitos...',
+                        : 'Buscar remitos por usuario, tipo, ubicación...',
                 hintStyle: TextStyle(
                   color: Colors.grey[500],
                   fontSize: 15,
@@ -787,70 +829,6 @@ class _WorksScreenState extends State<WorksScreen> {
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: Column(
             children: [
-              // Pagination mode toggle
-              Row(
-                children: [
-                  Text(
-                    'Modo de paginación:',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                  ),
-                  const Spacer(),
-                  GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _showPaginationButtons = !_showPaginationButtons;
-                      });
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color:
-                            _showPaginationButtons
-                                ? Colors.orange.shade100
-                                : Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color:
-                              _showPaginationButtons
-                                  ? Colors.orange
-                                  : Colors.grey.shade300,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            _showPaginationButtons
-                                ? LucideIcons.mousePointer
-                                : LucideIcons.arrowDown,
-                            size: 14,
-                            color:
-                                _showPaginationButtons
-                                    ? Colors.orange.shade700
-                                    : Colors.grey.shade600,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            _showPaginationButtons ? 'Botones' : 'Scroll',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color:
-                                  _showPaginationButtons
-                                      ? Colors.orange.shade700
-                                      : Colors.grey.shade600,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
               // Results info
               Row(
                 children: [
@@ -904,21 +882,33 @@ class _WorksScreenState extends State<WorksScreen> {
                       ),
                     ),
                   ],
-                  if (_showPaginationButtons && _searchQuery.isEmpty) ...[
-                    Text(
-                      'Página ${_selectedSection == 'tareas' ? _currentTasksPage : _currentReportsPage} de ${_selectedSection == 'tareas' ? _tasksTotalPages : _reportsTotalPages}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade500,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ] else if (_filteredTasks.isNotEmpty) ...[
+                  if (_filteredTasks.isNotEmpty && _searchQuery.isEmpty) ...[
                     Text(
                       'Mostrando ${_filteredTasks.length}',
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.grey.shade500,
+                      ),
+                    ),
+                  ],
+                  // Indicador de carga en segundo plano
+                  if (_isLoadingAllTasks || _isLoadingAllReports) ...[
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 1.5,
+                        color: Colors.orange.shade400,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Cargando más...',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.orange.shade600,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ],
@@ -929,11 +919,6 @@ class _WorksScreenState extends State<WorksScreen> {
         ),
         // Tasks list
         Expanded(child: _buildTasksList()),
-        // Pagination buttons (when enabled)
-        if (_showPaginationButtons &&
-            _searchQuery.isEmpty &&
-            _filteredTasks.isNotEmpty)
-          _buildPaginationControls(),
       ],
     );
   }
@@ -1129,93 +1114,36 @@ class _WorksScreenState extends State<WorksScreen> {
       );
     }
 
-    final bool hasMore =
-        _selectedSection == 'tareas' ? _hasMoreTasks : _hasMoreReports;
-    final bool isLoadingMore =
-        isCurrentSectionLoading && _filteredTasks.isNotEmpty;
-
     return RefreshIndicator(
       onRefresh: () => _loadData(refresh: true),
       color: Colors.orange,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16.0),
-        child:
-            _showPaginationButtons
-                ? ListView.builder(
-                  itemCount: _filteredTasks.length,
-                  itemBuilder: (context, index) {
-                    final task = _filteredTasks[index];
-                    return GestureDetector(
-                      onTap: () {
-                        if (_selectedSection == 'remitos' &&
-                            task['status'] != 'completed' &&
-                            task['_id'] != null) {
-                          _navigateToEditReport(task);
-                        } else {
-                          _showTaskDetail(task);
-                        }
-                      },
-                      child: Card(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        color: Colors.white,
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: _buildTaskCard(task),
-                        ),
-                      ),
-                    );
-                  },
-                )
-                : NotificationListener<ScrollNotification>(
-                  onNotification: (ScrollNotification scrollInfo) {
-                    if (!isLoadingMore &&
-                        hasMore &&
-                        _searchQuery.isEmpty &&
-                        scrollInfo.metrics.pixels >=
-                            scrollInfo.metrics.maxScrollExtent - 200) {
-                      _loadMore();
-                    }
-                    return false;
-                  },
-                  child: ListView.builder(
-                    itemCount:
-                        _filteredTasks.length +
-                        (hasMore && _searchQuery.isEmpty ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (index >= _filteredTasks.length) {
-                        return const Padding(
-                          padding: EdgeInsets.all(16.0),
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              color: Colors.orange,
-                            ),
-                          ),
-                        );
-                      }
-
-                      final task = _filteredTasks[index];
-                      return GestureDetector(
-                        onTap: () {
-                          if (_selectedSection == 'remitos' &&
-                              task['status'] != 'completed' &&
-                              task['_id'] != null) {
-                            _navigateToEditReport(task);
-                          } else {
-                            _showTaskDetail(task);
-                          }
-                        },
-                        child: Card(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          color: Colors.white,
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: _buildTaskCard(task),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+        child: ListView.builder(
+          itemCount: _filteredTasks.length,
+          itemBuilder: (context, index) {
+            final task = _filteredTasks[index];
+            return GestureDetector(
+              onTap: () {
+                if (_selectedSection == 'remitos' &&
+                    task['status'] != 'completed' &&
+                    task['_id'] != null) {
+                  _navigateToEditReport(task);
+                } else {
+                  _showTaskDetail(task);
+                }
+              },
+              child: Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                color: Colors.white,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: _buildTaskCard(task),
                 ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -1499,29 +1427,26 @@ class _WorksScreenState extends State<WorksScreen> {
   }
 
   void _showTaskDetail(Map<String, dynamic> task) async {
-    // Para esta implementación simplificada, usamos directamente los datos disponibles
-    // ya que la nueva API no tiene un endpoint específico para obtener detalles completos
     final taskToShow = task;
-
     if (!mounted) return;
 
     showDialog(
       context: context,
       builder: (BuildContext context) {
+        final isWideScreen = MediaQuery.of(context).size.width > 600;
+
         return Dialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(20),
           ),
           elevation: 0,
-          insetPadding: const EdgeInsets.all(16),
+          insetPadding: EdgeInsets.all(isWideScreen ? 32 : 16),
           child: Container(
             width: double.infinity,
-            height:
-                MediaQuery.of(context).size.height *
-                0.8, // Altura máxima del 80%
             constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width - 32,
-              maxHeight: MediaQuery.of(context).size.height * 0.8,
+              maxWidth:
+                  isWideScreen ? 800 : MediaQuery.of(context).size.width - 32,
+              maxHeight: MediaQuery.of(context).size.height * 0.85,
             ),
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -1529,174 +1454,126 @@ class _WorksScreenState extends State<WorksScreen> {
                 end: Alignment.bottomRight,
                 colors: [
                   Colors.white,
-                  Colors.orange.shade50.withValues(alpha: 0.3),
+                  Colors.orange.shade50.withValues(alpha: 0.2),
                 ],
               ),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.orange.withValues(alpha: 0.1),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
+                  color: Colors.orange.withValues(alpha: 0.15),
+                  blurRadius: 30,
+                  offset: const Offset(0, 15),
                 ),
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 5),
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 15,
+                  offset: const Offset(0, 8),
                 ),
               ],
             ),
             child: Column(
               children: [
-                // Header fijo
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _getTaskTitle(taskToShow),
-                          style: Theme.of(context).textTheme.titleLarge
-                              ?.copyWith(fontWeight: FontWeight.bold),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 2,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [Colors.grey.shade50, Colors.grey.shade100],
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.05),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: IconButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          icon: const Icon(Icons.close, color: Colors.grey),
-                          iconSize: 20,
-                          padding: const EdgeInsets.all(8),
-                          constraints: const BoxConstraints(
-                            minWidth: 36,
-                            minHeight: 36,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // Contenido scrolleable
+                // Header mejorado
+                _buildDialogHeader(context, taskToShow, isWideScreen),
+
+                // Contenido con mejor organización
                 Expanded(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                    padding: EdgeInsets.fromLTRB(
+                      isWideScreen ? 32 : 20,
+                      0,
+                      isWideScreen ? 32 : 20,
+                      isWideScreen ? 32 : 20,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildTaskInfoRow(
-                          'Estado',
-                          _translateStatus(_getTaskStatus(taskToShow)),
-                        ),
-                        _buildTaskInfoRow(
-                          'Fecha',
-                          _formatDate(_getTaskDate(taskToShow)),
-                        ),
-                        _buildTaskInfoRow('Tipo', _getTaskType(taskToShow)),
-                        _buildTaskInfoRow(
-                          'Ubicación',
-                          _getLocationText(_getTaskLocation(taskToShow)) ??
-                              'Sin ubicación',
-                        ),
-                        if (_selectedSection == 'remitos') ...[
-                          // Información específica de remitos
-                          if (taskToShow['connectivity'] != null)
-                            _buildTaskInfoRow(
-                              'Conectividad',
-                              taskToShow['connectivity'].toString(),
-                            ),
-                          if (taskToShow['startTime'] != null)
-                            _buildTaskInfoRow(
-                              'Inicio',
-                              _formatTime(taskToShow['startTime']),
-                            ),
-                          if (taskToShow['endTime'] != null)
-                            _buildTaskInfoRow(
-                              'Fin',
-                              _formatTime(taskToShow['endTime']),
-                            ),
-                          if (taskToShow['toDo'] != null &&
-                              taskToShow['toDo'].toString().isNotEmpty)
-                            _buildTaskInfoRow(
-                              'Descripción',
-                              taskToShow['toDo'].toString(),
-                            ),
+                        // Espaciado desde el header
+                        const SizedBox(height: 24),
 
-                          // Información específica según tipo de conectividad
-                          if (taskToShow['connectivity'] == 'Fibra óptica') ...[
-                            if (taskToShow['buffers'] != null)
-                              _buildTaskInfoRow(
-                                'Buffers',
-                                taskToShow['buffers'].toString(),
+                        // Sección de información básica
+                        _buildInfoSection(
+                          'Información General',
+                          LucideIcons.info,
+                          Colors.blue,
+                          [
+                            _buildDetailRow(
+                              'Estado',
+                              _translateStatus(_getTaskStatus(taskToShow)),
+                              _getStatusIcon(
+                                _translateStatus(_getTaskStatus(taskToShow)),
                               ),
-                            if (taskToShow['bufferColor'] != null)
-                              _buildTaskInfoRow(
-                                'Color Buffer',
-                                taskToShow['bufferColor'].toString(),
+                              _getStatusColorFromText(
+                                _translateStatus(_getTaskStatus(taskToShow)),
                               ),
-                            if (taskToShow['hairColor'] != null)
-                              _buildTaskInfoRow(
-                                'Color Pelo',
-                                taskToShow['hairColor'].toString(),
-                              ),
-                            if (taskToShow['db'] != null)
-                              _buildTaskInfoRow(
-                                'DB',
-                                taskToShow['db'].toString(),
-                              ),
-                          ] else if (taskToShow['connectivity'] ==
-                              'Enlace') ...[
-                            if (taskToShow['ap'] != null)
-                              _buildTaskInfoRow(
-                                'AP',
-                                taskToShow['ap'].toString(),
-                              ),
-                            if (taskToShow['st'] != null)
-                              _buildTaskInfoRow(
-                                'ST',
-                                taskToShow['st'].toString(),
-                              ),
-                            if (taskToShow['ccq'] != null)
-                              _buildTaskInfoRow(
-                                'CCQ',
-                                taskToShow['ccq'].toString(),
-                              ),
+                            ),
+                            _buildDetailRow(
+                              'Fecha',
+                              _formatDate(_getTaskDate(taskToShow)),
+                              LucideIcons.calendar,
+                              Colors.grey.shade600,
+                            ),
+                            _buildDetailRow(
+                              'Tipo',
+                              _getTaskType(taskToShow),
+                              LucideIcons.tag,
+                              _getTaskTypeColor(_getTaskType(taskToShow)),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Sección de ubicación y mapa
+                        _buildLocationSection(taskToShow, isWideScreen),
+
+                        if (_selectedSection == 'remitos') ...[
+                          const SizedBox(height: 24),
+
+                          // Sección de conectividad y horarios
+                          _buildReportDetailsSection(taskToShow),
+
+                          // Sección de información técnica específica
+                          if (taskToShow['connectivity'] == 'Fibra óptica' ||
+                              taskToShow['connectivity'] == 'Enlace') ...[
+                            const SizedBox(height: 24),
+                            _buildTechnicalSection(taskToShow),
                           ],
 
-                          // Materiales utilizados
+                          // Sección de materiales
                           if (taskToShow['supplies'] != null &&
-                              (taskToShow['supplies'] as List).isNotEmpty)
+                              (taskToShow['supplies'] as List).isNotEmpty) ...[
+                            const SizedBox(height: 24),
                             _buildSuppliesSection(taskToShow['supplies']),
+                          ],
 
-                          // Imágenes
+                          // Sección de imágenes
                           if (taskToShow['imagesUrl'] != null &&
-                              (taskToShow['imagesUrl'] as List).isNotEmpty)
+                              (taskToShow['imagesUrl'] as List).isNotEmpty) ...[
+                            const SizedBox(height: 24),
                             _buildImagesSection(taskToShow['imagesUrl']),
+                          ],
                         ] else ...[
-                          // Para tareas normales
-                          _buildTaskInfoRow(
+                          const SizedBox(height: 24),
+
+                          // Sección de descripción para tareas
+                          _buildInfoSection(
                             'Descripción',
-                            _getTaskDescription(taskToShow),
+                            LucideIcons.fileText,
+                            Colors.green,
+                            [
+                              _buildDescriptionCard(
+                                _getTaskDescription(taskToShow),
+                              ),
+                            ],
                           ),
+
                           // Imágenes de la tarea
                           if (_getTaskImages(taskToShow) != null &&
-                              _getTaskImages(taskToShow)!.isNotEmpty)
+                              _getTaskImages(taskToShow)!.isNotEmpty) ...[
+                            const SizedBox(height: 24),
                             _buildImagesSection(_getTaskImages(taskToShow)!),
+                          ],
                         ],
                       ],
                     ),
@@ -1710,58 +1587,415 @@ class _WorksScreenState extends State<WorksScreen> {
     );
   }
 
-  Widget _buildTaskInfoRow(String label, String value) {
-    IconData icon;
-    Color iconColor;
+  // New helper methods for improved dialog
 
-    switch (label.toLowerCase()) {
-      case 'estado':
-        icon = _getStatusIcon(value);
-        iconColor = _getStatusColorFromText(value);
-        break;
-      case 'descripción':
-        icon = LucideIcons.fileText;
-        iconColor = Colors.grey;
-        break;
-      case 'ubicación':
-        icon = LucideIcons.mapPin;
-        iconColor = Colors.grey;
-        break;
-      case 'fecha':
-        icon = LucideIcons.calendar;
-        iconColor = Colors.grey;
-        break;
-      case 'tipo':
-        icon = LucideIcons.tag;
-        iconColor = Colors.grey;
-        break;
-      default:
-        icon = LucideIcons.info;
-        iconColor = Colors.grey;
+  Widget _buildDialogHeader(
+    BuildContext context,
+    Map<String, dynamic> taskToShow,
+    bool isWideScreen,
+  ) {
+    return Container(
+      padding: EdgeInsets.all(isWideScreen ? 32 : 24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Colors.orange.shade400, Colors.orange.shade600],
+        ),
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              _selectedSection == 'remitos'
+                  ? LucideIcons.fileText
+                  : LucideIcons.checkSquare,
+              color: Colors.white,
+              size: isWideScreen ? 28 : 24,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _selectedSection == 'remitos'
+                      ? 'Detalles del Remito'
+                      : 'Detalles de la Tarea',
+                  style: TextStyle(
+                    fontSize: isWideScreen ? 16 : 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white.withValues(alpha: 0.9),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _getTaskTitle(taskToShow),
+                  style: TextStyle(
+                    fontSize: isWideScreen ? 22 : 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: IconButton(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.close, color: Colors.white),
+              iconSize: isWideScreen ? 24 : 20,
+              padding: const EdgeInsets.all(12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoSection(
+    String title,
+    IconData icon,
+    Color color,
+    List<Widget> children,
+  ) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  color.withValues(alpha: 0.1),
+                  color.withValues(alpha: 0.05),
+                ],
+              ),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(icon, color: color, size: 18),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: color.withValues(alpha: 0.9),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(children: children),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(
+    String label,
+    String value,
+    IconData icon,
+    Color iconColor,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Icon(icon, size: 16, color: iconColor),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey.shade900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLocationSection(
+    Map<String, dynamic> taskToShow,
+    bool isWideScreen,
+  ) {
+    final locationText =
+        _getLocationText(_getTaskLocation(taskToShow)) ?? 'Sin ubicación';
+    final hasCoordinates = _hasLocationCoordinates(
+      _getTaskLocation(taskToShow),
+    );
+
+    return _buildInfoSection('Ubicación', LucideIcons.mapPin, Colors.purple, [
+      _buildDetailRow(
+        'Ubicación',
+        locationText,
+        LucideIcons.mapPin,
+        Colors.purple.shade600,
+      ),
+
+      if (_selectedSection == 'remitos' &&
+          _selectedStatus == 'completed' &&
+          hasCoordinates) ...[
+        const SizedBox(height: 16),
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.purple.shade200),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: _buildMapSection(_getTaskLocation(taskToShow)!),
+          ),
+        ),
+      ],
+    ]);
+  }
+
+  Widget _buildReportDetailsSection(Map<String, dynamic> taskToShow) {
+    List<Widget> details = [];
+
+    if (taskToShow['connectivity'] != null) {
+      details.add(
+        _buildDetailRow(
+          'Conectividad',
+          taskToShow['connectivity'].toString(),
+          LucideIcons.wifi,
+          Colors.teal.shade600,
+        ),
+      );
     }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+    if (taskToShow['startTime'] != null) {
+      details.add(
+        _buildDetailRow(
+          'Inicio',
+          _formatTime(taskToShow['startTime']),
+          LucideIcons.play,
+          Colors.green.shade600,
+        ),
+      );
+    }
+
+    if (taskToShow['endTime'] != null) {
+      details.add(
+        _buildDetailRow(
+          'Fin',
+          _formatTime(taskToShow['endTime']),
+          LucideIcons.square,
+          Colors.red.shade600,
+        ),
+      );
+    }
+
+    if (taskToShow['toDo'] != null &&
+        taskToShow['toDo'].toString().isNotEmpty) {
+      details.add(_buildDescriptionCard(taskToShow['toDo'].toString()));
+    }
+
+    if (details.isEmpty) return const SizedBox.shrink();
+
+    return _buildInfoSection(
+      'Detalles del Trabajo',
+      LucideIcons.clipboard,
+      Colors.teal,
+      details,
+    );
+  }
+
+  Widget _buildTechnicalSection(Map<String, dynamic> taskToShow) {
+    List<Widget> technicalDetails = [];
+
+    if (taskToShow['connectivity'] == 'Fibra óptica') {
+      if (taskToShow['buffers'] != null) {
+        technicalDetails.add(
+          _buildDetailRow(
+            'Buffers',
+            taskToShow['buffers'].toString(),
+            LucideIcons.layers,
+            Colors.indigo.shade600,
+          ),
+        );
+      }
+      if (taskToShow['bufferColor'] != null) {
+        technicalDetails.add(
+          _buildDetailRow(
+            'Color Buffer',
+            taskToShow['bufferColor'].toString(),
+            LucideIcons.palette,
+            Colors.indigo.shade600,
+          ),
+        );
+      }
+      if (taskToShow['hairColor'] != null) {
+        technicalDetails.add(
+          _buildDetailRow(
+            'Color Pelo',
+            taskToShow['hairColor'].toString(),
+            LucideIcons.palette,
+            Colors.indigo.shade600,
+          ),
+        );
+      }
+      if (taskToShow['db'] != null) {
+        technicalDetails.add(
+          _buildDetailRow(
+            'DB',
+            taskToShow['db'].toString(),
+            LucideIcons.barChart3,
+            Colors.indigo.shade600,
+          ),
+        );
+      }
+    } else if (taskToShow['connectivity'] == 'Enlace') {
+      if (taskToShow['ap'] != null) {
+        technicalDetails.add(
+          _buildDetailRow(
+            'AP',
+            taskToShow['ap'].toString(),
+            LucideIcons.radio,
+            Colors.indigo.shade600,
+          ),
+        );
+      }
+      if (taskToShow['st'] != null) {
+        technicalDetails.add(
+          _buildDetailRow(
+            'ST',
+            taskToShow['st'].toString(),
+            LucideIcons.satellite,
+            Colors.indigo.shade600,
+          ),
+        );
+      }
+      if (taskToShow['ccq'] != null) {
+        technicalDetails.add(
+          _buildDetailRow(
+            'CCQ',
+            taskToShow['ccq'].toString(),
+            LucideIcons.signal,
+            Colors.indigo.shade600,
+          ),
+        );
+      }
+    }
+
+    if (technicalDetails.isEmpty) return const SizedBox.shrink();
+
+    return _buildInfoSection(
+      'Información Técnica',
+      LucideIcons.settings,
+      Colors.indigo,
+      technicalDetails,
+    );
+  }
+
+  Widget _buildDescriptionCard(String description) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, size: 16, color: iconColor),
+              Icon(LucideIcons.fileText, size: 16, color: Colors.grey.shade600),
               const SizedBox(width: 8),
               Text(
-                '$label:',
-                style: const TextStyle(fontWeight: FontWeight.w500),
+                'Descripción',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade700,
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          Padding(
-            padding: const EdgeInsets.only(left: 24),
-            child: Text(
-              value,
-              style: const TextStyle(color: Colors.grey),
-              softWrap: true,
+          const SizedBox(height: 8),
+          Text(
+            description,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w400,
+              color: Colors.grey.shade800,
+              height: 1.4,
             ),
           ),
         ],
@@ -1829,290 +2063,181 @@ class _WorksScreenState extends State<WorksScreen> {
     }
   }
 
-  Widget _buildPaginationControls() {
-    final currentPage =
-        _selectedSection == 'tareas' ? _currentTasksPage : _currentReportsPage;
-    final totalPages =
-        _selectedSection == 'tareas' ? _tasksTotalPages : _reportsTotalPages;
-    final isLoading =
-        _selectedSection == 'tareas' ? _isLoadingTasks : _isLoadingReports;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Colors.grey.shade200)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // First page button
-          _buildPaginationButton(
-            icon: LucideIcons.chevronFirst,
-            onPressed: currentPage > 1 && !isLoading ? _goToFirstPage : null,
-            tooltip: 'Primera página',
-          ),
-          const SizedBox(width: 8),
-          // Previous page button
-          _buildPaginationButton(
-            icon: LucideIcons.chevronLeft,
-            onPressed: currentPage > 1 && !isLoading ? _goToPreviousPage : null,
-            tooltip: 'Página anterior',
-          ),
-          const SizedBox(width: 16),
-          // Page info
-          if (isLoading)
-            const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.orange,
-              ),
-            )
-          else
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.orange.shade50,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.orange.shade200),
-              ),
-              child: Text(
-                '$currentPage / $totalPages',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.orange.shade700,
-                ),
-              ),
-            ),
-          const SizedBox(width: 16),
-          // Next page button
-          _buildPaginationButton(
-            icon: LucideIcons.chevronRight,
-            onPressed:
-                currentPage < totalPages && !isLoading ? _goToNextPage : null,
-            tooltip: 'Página siguiente',
-          ),
-          const SizedBox(width: 8),
-          // Last page button
-          _buildPaginationButton(
-            icon: LucideIcons.chevronLast,
-            onPressed:
-                currentPage < totalPages && !isLoading ? _goToLastPage : null,
-            tooltip: 'Última página',
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPaginationButton({
-    required IconData icon,
-    VoidCallback? onPressed,
-    required String tooltip,
-  }) {
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color:
-                onPressed != null ? Colors.orange.shade50 : Colors.grey.shade50,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color:
-                  onPressed != null
-                      ? Colors.orange.shade200
-                      : Colors.grey.shade200,
-            ),
-          ),
-          child: Icon(
-            icon,
-            size: 20,
-            color:
-                onPressed != null
-                    ? Colors.orange.shade700
-                    : Colors.grey.shade400,
-          ),
-        ),
-      ),
-    );
-  }
-
   /// Widget para mostrar la sección de materiales/suministros
   Widget _buildSuppliesSection(List<dynamic> supplies) {
-    // Cargar todos los materiales una sola vez
     final Future<List<Map<String, dynamic>>> allMaterialsFuture =
         _loadAllSuppliesMaterials(supplies);
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                LucideIcons.package,
-                size: 16,
-                color: Colors.orange.shade600,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Materiales utilizados:',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: Colors.orange.shade700,
+    return _buildInfoSection(
+      'Materiales Utilizados',
+      LucideIcons.package,
+      Colors.orange,
+      [
+        FutureBuilder<List<Map<String, dynamic>>>(
+          future: allMaterialsFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: CircularProgressIndicator(
+                    color: Colors.orange,
+                    strokeWidth: 2,
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.orange.shade50,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.orange.shade200),
-            ),
-            child: FutureBuilder<List<Map<String, dynamic>>>(
-              future: allMaterialsFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(16.0),
-                      child: CircularProgressIndicator(
-                        color: Colors.orange,
-                        strokeWidth: 2,
+              );
+            }
+
+            if (snapshot.hasError) {
+              return Container(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'Error al cargar materiales',
+                  style: TextStyle(color: Colors.red.shade600, fontSize: 13),
+                ),
+              );
+            }
+
+            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+              return Container(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'No se encontraron materiales',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                ),
+              );
+            }
+
+            final materialsData = snapshot.data!;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children:
+                  materialsData.map((materialData) {
+                    final materialName =
+                        materialData['name'] ?? 'Material desconocido';
+                    final quantity = materialData['quantity'] ?? '0';
+                    final isRecovered = materialData['isRecovered'] ?? false;
+                    final status = materialData['status'] ?? 'nuevo';
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color:
+                            isRecovered
+                                ? Colors.green.shade50
+                                : Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color:
+                              isRecovered
+                                  ? Colors.green.shade200
+                                  : Colors.orange.shade200,
+                        ),
                       ),
-                    ),
-                  );
-                }
-
-                if (snapshot.hasError) {
-                  return Text(
-                    'Error al cargar materiales',
-                    style: TextStyle(color: Colors.red.shade600, fontSize: 13),
-                  );
-                }
-
-                if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return Text(
-                    'No se encontraron materiales',
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-                  );
-                }
-
-                final materialsData = snapshot.data!;
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children:
-                      materialsData.map((materialData) {
-                        final materialName =
-                            materialData['name'] ?? 'Material desconocido';
-                        final quantity = materialData['quantity'] ?? '0';
-                        final isRecovered =
-                            materialData['isRecovered'] ?? false;
-                        final status = materialData['status'] ?? 'nuevo';
-
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 3),
-                          child: Row(
-                            children: [
-                              Icon(
-                                isRecovered
-                                    ? LucideIcons.recycle
-                                    : LucideIcons.box,
-                                size: 14,
-                                color:
-                                    isRecovered
-                                        ? Colors.green.shade600
-                                        : Colors.orange.shade600,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      materialName,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w500,
-                                        color: Colors.grey.shade800,
-                                      ),
-                                    ),
-                                    if (isRecovered && status != 'nuevo')
-                                      Text(
-                                        'Material $status',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.green.shade600,
-                                          fontStyle: FontStyle.italic,
-                                        ),
-                                      ),
-                                  ],
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color:
+                                  isRecovered
+                                      ? Colors.green.shade100
+                                      : Colors.orange.shade100,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              isRecovered
+                                  ? LucideIcons.recycle
+                                  : LucideIcons.box,
+                              size: 16,
+                              color:
+                                  isRecovered
+                                      ? Colors.green.shade600
+                                      : Colors.orange.shade600,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  materialName,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.grey.shade800,
+                                  ),
                                 ),
-                              ),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (isRecovered)
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 6,
-                                        vertical: 2,
-                                      ),
-                                      margin: const EdgeInsets.only(right: 6),
-                                      decoration: BoxDecoration(
-                                        color: Colors.green.shade100,
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Text(
-                                        'Reutilizado',
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.green.shade700,
-                                        ),
-                                      ),
-                                    ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.orange.shade100,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      'Cant: $quantity',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.orange.shade800,
-                                      ),
+                                if (isRecovered && status != 'nuevo') ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Material $status',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.green.shade600,
+                                      fontStyle: FontStyle.italic,
                                     ),
                                   ),
                                 ],
+                              ],
+                            ),
+                          ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isRecovered)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  margin: const EdgeInsets.only(right: 8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.shade100,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    'Reutilizado',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.green.shade700,
+                                    ),
+                                  ),
+                                ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color:
+                                      isRecovered
+                                          ? Colors.green.shade600
+                                          : Colors.orange.shade600,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  'x$quantity',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
                               ),
                             ],
                           ),
-                        );
-                      }).toList(),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+            );
+          },
+        ),
+      ],
     );
   }
 
@@ -2121,154 +2246,133 @@ class _WorksScreenState extends State<WorksScreen> {
     final validImages =
         imagesUrl
             .where((url) => url != null && url.toString().isNotEmpty)
-            .take(4) // Máximo 4 imágenes
+            .take(6) // Aumentamos a 6 imágenes
             .toList();
 
     if (validImages.isEmpty) return const SizedBox.shrink();
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(LucideIcons.image, size: 16, color: Colors.blue.shade600),
-              const SizedBox(width: 8),
-              Text(
-                'Imágenes (${validImages.length}):',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: Colors.blue.shade700,
-                ),
-              ),
-            ],
+    return _buildInfoSection(
+      'Imágenes (${validImages.length})',
+      LucideIcons.image,
+      Colors.blue,
+      [
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
+            childAspectRatio: 1,
           ),
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 120,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: validImages.length,
-              itemBuilder: (context, index) {
-                final imageUrl = validImages[index].toString();
-                return Padding(
-                  padding: EdgeInsets.only(
-                    right: index < validImages.length - 1 ? 8 : 0,
-                  ),
-                  child: GestureDetector(
-                    onTap: () => _showFullScreenImage(context, imageUrl),
-                    child: Container(
-                      width: 120,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.blue.shade200),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.1),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
+          itemCount: validImages.length,
+          itemBuilder: (context, index) {
+            final imageUrl = validImages[index].toString();
+            return GestureDetector(
+              onTap: () => _showFullScreenImage(context, imageUrl),
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.blue.shade200),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.blue.withValues(alpha: 0.1),
+                      blurRadius: 6,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Stack(
+                    children: [
+                      Image.network(
+                        imageUrl,
+                        width: double.infinity,
+                        height: double.infinity,
+                        fit: BoxFit.cover,
+                        cacheWidth: 300,
+                        cacheHeight: 300,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return Container(
+                            color: Colors.grey.shade100,
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                value:
+                                    loadingProgress.expectedTotalBytes != null
+                                        ? loadingProgress
+                                                .cumulativeBytesLoaded /
+                                            loadingProgress.expectedTotalBytes!
+                                        : null,
+                                strokeWidth: 2,
+                                color: Colors.blue,
+                              ),
+                            ),
+                          );
+                        },
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: Colors.grey.shade100,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  LucideIcons.imageOff,
+                                  color: Colors.grey.shade400,
+                                  size: 24,
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Error',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.grey.shade500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Stack(
-                          children: [
-                            Image.network(
-                              imageUrl,
-                              width: 120,
-                              height: 120,
-                              fit: BoxFit.cover,
-                              // Optimizaciones de cache para thumbnails
-                              cacheWidth: 240, // 2x para alta densidad
-                              cacheHeight: 240,
-                              loadingBuilder: (
-                                context,
-                                child,
-                                loadingProgress,
-                              ) {
-                                if (loadingProgress == null) return child;
-                                return Center(
-                                  child: CircularProgressIndicator(
-                                    value:
-                                        loadingProgress.expectedTotalBytes !=
-                                                null
-                                            ? loadingProgress
-                                                    .cumulativeBytesLoaded /
-                                                loadingProgress
-                                                    .expectedTotalBytes!
-                                            : null,
-                                    strokeWidth: 2,
-                                    color: Colors.blue,
-                                  ),
-                                );
-                              },
-                              errorBuilder: (context, error, stackTrace) {
-                                return Container(
-                                  color: Colors.grey.shade100,
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        LucideIcons.imageOff,
-                                        color: Colors.grey.shade400,
-                                        size: 24,
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Error',
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          color: Colors.grey.shade500,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
-                            // Overlay para indicar que se puede tocar
-                            Container(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    Colors.transparent,
-                                    Colors.black.withValues(alpha: 0.1),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              bottom: 4,
-                              right: 4,
-                              child: Container(
-                                padding: const EdgeInsets.all(2),
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withValues(alpha: 0.6),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Icon(
-                                  LucideIcons.expand,
-                                  size: 12,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ],
+                      // Overlay con gradiente
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              Colors.black.withValues(alpha: 0.2),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
+                      // Icono de expansión
+                      Positioned(
+                        bottom: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            LucideIcons.expand,
+                            size: 16,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 
@@ -2499,6 +2603,175 @@ class _WorksScreenState extends State<WorksScreen> {
                 _loadData(refresh: true);
               },
             ),
+      ),
+    );
+  }
+
+  bool _hasLocationCoordinates(String? location) {
+    if (location == null) return false;
+
+    final locationStr = location.toString();
+    if (locationStr.contains(',') && locationStr.contains('-')) {
+      final parts = locationStr.split(',');
+      if (parts.length == 2) {
+        try {
+          final lat = double.parse(parts[0].trim());
+          final lng = double.parse(parts[1].trim());
+          return lat.abs() > 0.0001 && lng.abs() > 0.0001;
+        } catch (e) {
+          return false;
+        }
+      }
+    }
+    return false;
+  }
+
+  Widget _buildMapSection(String location) {
+    final parts = location.split(',');
+    final lat = double.parse(parts[0].trim());
+    final lng = double.parse(parts[1].trim());
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          height: 250,
+          width: double.infinity,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.purple.withValues(alpha: 0.1),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Stack(
+              children: [
+                FlutterMap(
+                  options: MapOptions(
+                    initialCenter: LatLng(lat, lng),
+                    initialZoom: 16.0,
+                    maxZoom: 18.0,
+                    minZoom: 5.0,
+                    interactionOptions: const InteractionOptions(
+                      flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+                    ),
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate:
+                          'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+                      subdomains: const ['a', 'b', 'c', 'd'],
+                      userAgentPackageName: 'com.example.techhub_mobile',
+                    ),
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          point: LatLng(lat, lng),
+                          width: 50,
+                          height: 50,
+                          child: Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              color: Colors.purple.shade600,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 3),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.purple.withValues(alpha: 0.4),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.2),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              LucideIcons.mapPin,
+                              color: Colors.white,
+                              size: 26,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                Positioned(
+                  bottom: 12,
+                  left: 12,
+                  right: 12,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.8),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () => _copyLocation(context, lat, lng),
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: Colors.purple.shade600,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Icon(
+                              LucideIcons.copy,
+                              color: Colors.white,
+                              size: 14,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _copyLocation(
+    BuildContext context,
+    double latitude,
+    double longitude,
+  ) async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    await Clipboard.setData(ClipboardData(text: '$latitude,$longitude'));
+    if (!mounted) return;
+
+    scaffoldMessenger.showSnackBar(
+      SnackBar(
+        content: const Text('Ubicación copiada al portapapeles'),
+        duration: const Duration(seconds: 2),
+        backgroundColor: Colors.green,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
   }

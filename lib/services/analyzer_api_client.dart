@@ -262,6 +262,28 @@ class AnalyzerApiClient {
     }
   }
 
+  // =======================
+  // Endpoints de Historial Operativo
+  // =======================
+
+  static Future<ApiResponse<List<Map<String, dynamic>>>> getOperationalHistory() async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/operationalHistory/getOperationalHistory'),
+            headers: _jsonHeaders,
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<List<Map<String, dynamic>>>(
+        response,
+        (data) => List<Map<String, dynamic>>.from(data),
+      );
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
   static ApiResponse<T> _handleResponse<T>(
     http.Response response,
     T Function(dynamic) converter,

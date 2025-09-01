@@ -18,6 +18,7 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
   String? _selectedTypeFilter;
   String? _selectedZoneFilter;
   String? _selectedStatusFilter;
+  String _searchQuery = '';
 
   // Datos
   List<Map<String, dynamic>> _cameras = [];
@@ -152,10 +153,84 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
     return null;
   }
 
+  void _clearAllFilters() {
+    setState(() {
+      _selectedTypeFilter = null;
+      _selectedZoneFilter = null;
+      _selectedStatusFilter = null;
+      _searchQuery = '';
+    });
+  }
+
   List<Map<String, dynamic>> _getFilteredItems() {
     List<Map<String, dynamic>> items = _showCameras ? _cameras : _servers;
 
     return items.where((item) {
+      // Filtro de búsqueda
+      if (_searchQuery.isNotEmpty) {
+        final searchLower = _searchQuery.toLowerCase();
+        bool matchFound = false;
+
+        // Campos comunes para buscar en ambos (cámaras y servidores)
+        final commonFields = ['name', 'zone', 'status', 'ip', 'username'];
+
+        // Campos específicos de cámaras
+        final cameraFields = ['type', 'direction', 'liable'];
+
+        // Campos específicos de servidores
+        final serverFields = ['mainIp', 'ipsRange'];
+
+        // Buscar en campos comunes
+        for (String field in commonFields) {
+          final value = item[field];
+          if (value != null &&
+              value.toString().toLowerCase().contains(searchLower)) {
+            matchFound = true;
+            break;
+          }
+        }
+
+        // Si es cámara, buscar también en campos específicos de cámara
+        if (!matchFound && _showCameras) {
+          for (String field in cameraFields) {
+            final value = item[field];
+            if (value != null &&
+                value.toString().toLowerCase().contains(searchLower)) {
+              matchFound = true;
+              break;
+            }
+          }
+
+          // Buscar también en coordenadas (latitude, longitude)
+          if (!matchFound) {
+            final latitude = item['latitude'];
+            final longitude = item['longitude'];
+            if (latitude != null && latitude.toString().contains(searchLower)) {
+              matchFound = true;
+            }
+            if (!matchFound &&
+                longitude != null &&
+                longitude.toString().contains(searchLower)) {
+              matchFound = true;
+            }
+          }
+        }
+
+        // Si es servidor, buscar también en campos específicos de servidor
+        if (!matchFound && !_showCameras) {
+          for (String field in serverFields) {
+            final value = item[field];
+            if (value != null &&
+                value.toString().toLowerCase().contains(searchLower)) {
+              matchFound = true;
+              break;
+            }
+          }
+        }
+
+        if (!matchFound) return false;
+      }
+
       // Filtro por tipo (solo para cámaras)
       if (_showCameras && _selectedTypeFilter != null) {
         final itemType = item['type'] as String?;
@@ -1774,6 +1849,40 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                     ),
                     const SizedBox(height: 20),
 
+                    // Buscador
+                    TextField(
+                      decoration: InputDecoration(
+                        labelText: 'Buscar',
+                        hintText:
+                            'Buscar por nombre, IP, zona, estado, tipo...',
+                        prefixIcon: const Icon(LucideIcons.search),
+                        suffixIcon:
+                            _searchQuery.isNotEmpty
+                                ? IconButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      _searchQuery = '';
+                                    });
+                                  },
+                                  icon: const Icon(Icons.clear),
+                                )
+                                : null,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                      ),
+                      onChanged: (value) {
+                        setState(() {
+                          _searchQuery = value;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
                     // Filtros
                     Column(
                       children: [
@@ -1893,21 +2002,49 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Botón agregar
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: _showAddItemDialog,
-                        icon: Icon(LucideIcons.plus),
-                        label: Text(
-                          _showCameras ? 'Agregar Cámara' : 'Agregar Servidor',
+                    // Botones de acción
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: _showAddItemDialog,
+                            icon: Icon(LucideIcons.plus),
+                            label: Text(
+                              _showCameras
+                                  ? 'Agregar Cámara'
+                                  : 'Agregar Servidor',
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                            ),
+                          ),
                         ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
+                        const SizedBox(width: 12),
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            final hasFilters =
+                                _selectedTypeFilter != null ||
+                                _selectedZoneFilter != null ||
+                                _selectedStatusFilter != null ||
+                                _searchQuery.isNotEmpty;
+                            if (hasFilters) {
+                              _clearAllFilters();
+                            }
+                          },
+                          icon: Icon(LucideIcons.filterX),
+                          label: const Text('Limpiar'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.grey.shade600,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 16,
+                              horizontal: 16,
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                     const SizedBox(height: 16),
 

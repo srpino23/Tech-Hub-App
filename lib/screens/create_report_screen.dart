@@ -254,21 +254,22 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         var materialName = teamMaterial['materialName']?.toString();
 
         // El materialName debería venir del inventario del equipo según tu estructura
-        if (materialId != null &&
-            materialName != null &&
-            materialName.isNotEmpty) {
-          materialsWithNames.add({
-            'materialId': materialId,
-            'materialName': materialName,
-            'quantity': quantity,
-          });
-        } else if (materialId != null) {
-          // Fallback: si no hay materialName, buscar en inventarios principales
-          await _loadMaterialNameFromInventories(
-            materialId,
-            quantity,
-            materialsWithNames,
-          );
+        if (materialId != null) {
+          // Si ya tiene nombre válido, usarlo
+          if (materialName != null && materialName.isNotEmpty) {
+            materialsWithNames.add({
+              'materialId': materialId,
+              'materialName': materialName,
+              'quantity': quantity,
+            });
+          } else {
+            // Si no hay materialName, buscar en inventarios principales
+            await _loadMaterialNameFromInventories(
+              materialId,
+              quantity,
+              materialsWithNames,
+            );
+          }
         }
       }
 
@@ -349,23 +350,38 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   }
 
   List<Map<String, dynamic>> get _selectedMaterialsList {
-    return _materialQuantities.entries.map((entry) {
+    final List<Map<String, dynamic>> validMaterials = [];
+    
+    for (var entry in _materialQuantities.entries) {
       final materialId = entry.key;
       final quantity = entry.value;
+      
+      // Buscar el material en la lista disponible
       final material = _availableMaterials.firstWhere(
         (m) => m['materialId'].toString() == materialId,
-        orElse:
-            () => {
-              'materialId': materialId,
-              'materialName': 'Material desconocido',
-            },
+        orElse: () => <String, dynamic>{},
       );
-      return {
-        'materialId': materialId,
-        'materialName': material['materialName'],
-        'quantity': quantity,
-      };
-    }).toList();
+      
+      // Obtener el nombre del material de manera segura
+      String materialName;
+      if (material.isNotEmpty && material['materialName'] != null) {
+        materialName = material['materialName'].toString();
+      } else {
+        // Fallback: usar el ID del material si no hay nombre
+        materialName = 'Material ID: $materialId';
+      }
+      
+      // Solo agregar materiales con nombre válido
+      if (materialName.isNotEmpty && quantity > 0) {
+        validMaterials.add({
+          'materialId': materialId,
+          'materialName': materialName,
+          'quantity': quantity,
+        });
+      }
+    }
+    
+    return validMaterials;
   }
 
   List<dynamic> _convertUniversalImagesToFiles() {
@@ -679,14 +695,33 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         throw Exception('Equipo no válido');
       }
 
+      // Obtener materiales válidos
+      final materialsToSend = _selectedMaterialsList;
+      
+      // Validación adicional: verificar que todos los materiales tengan nombre
+      final validatedMaterials = materialsToSend.where((material) {
+        final hasValidName = material['materialName'] != null && 
+                           material['materialName'].toString().isNotEmpty;
+        final hasValidQuantity = material['quantity'] != null && 
+                               (material['quantity'] as num) > 0;
+        return hasValidName && hasValidQuantity;
+      }).toList();
+      
+      // Debug: Imprimir materiales que se van a enviar
+      if (kDebugMode) {
+        print('Materiales originales: ${materialsToSend.length}');
+        print('Materiales validados: ${validatedMaterials.length}');
+        print('Materiales a enviar: ${json.encode(validatedMaterials)}');
+      }
+      
       // Finalizar el reporte con todos los datos usando la nueva API
       final finishResponse = await TechHubApiClient.finishReport(
         reportId: _currentReportId!,
         status: 'completed',
         teamId: teamId,
         supplies:
-            _materialQuantities.isNotEmpty
-                ? json.encode(_selectedMaterialsList)
+            validatedMaterials.isNotEmpty
+                ? json.encode(validatedMaterials)
                 : null,
         toDo: _descriptionController.text,
         typeOfWork: _typeOfWork,
@@ -915,7 +950,13 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         teamId: teamId,
         supplies:
             _materialQuantities.isNotEmpty
-                ? json.encode(_selectedMaterialsList)
+                ? json.encode(_selectedMaterialsList.where((material) {
+                    final hasValidName = material['materialName'] != null && 
+                                       material['materialName'].toString().isNotEmpty;
+                    final hasValidQuantity = material['quantity'] != null && 
+                                           (material['quantity'] as num) > 0;
+                    return hasValidName && hasValidQuantity;
+                  }).toList())
                 : null,
         toDo:
             _descriptionController.text.isNotEmpty
