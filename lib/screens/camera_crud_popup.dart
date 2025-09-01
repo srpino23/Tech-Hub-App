@@ -318,6 +318,23 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
     }
   }
 
+  String _translateCameraType(String? type) {
+    if (type == null) return 'N/A';
+
+    switch (type.toLowerCase()) {
+      case 'fixed':
+        return 'Fija';
+      case 'dome':
+        return 'Domo';
+      case 'lpr':
+        return 'LPR';
+      case 'button':
+        return 'Botón';
+      default:
+        return type;
+    }
+  }
+
   void _showAddItemDialog() {
     showDialog(
       context: context,
@@ -344,61 +361,74 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
 
     return StatefulBuilder(
       builder: (context, setDialogState) {
+        final isWideScreen = MediaQuery.of(context).size.width > 600;
+
         return Dialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(20),
           ),
+          elevation: 0,
+          insetPadding: EdgeInsets.all(isWideScreen ? 32 : 16),
           child: Container(
             width: double.infinity,
             constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width - 32,
-              maxHeight: MediaQuery.of(context).size.height * 0.8,
+              maxWidth:
+                  isWideScreen ? 800 : MediaQuery.of(context).size.width - 32,
+              maxHeight: MediaQuery.of(context).size.height * 0.85,
+            ),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white,
+                  Colors.orange.shade50.withValues(alpha: 0.2),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.orange.withValues(alpha: 0.15),
+                  blurRadius: 30,
+                  offset: const Offset(0, 15),
+                ),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 15,
+                  offset: const Offset(0, 8),
+                ),
+              ],
             ),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(16),
-                      topRight: Radius.circular(16),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(LucideIcons.video, color: Colors.orange.shade700),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Agregar Cámara',
-                          style: Theme.of(
-                            context,
-                          ).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.orange.shade700,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close),
-                      ),
-                    ],
-                  ),
+                // Header mejorado
+                _buildAddDialogHeader(
+                  context,
+                  'Agregar Cámara',
+                  LucideIcons.video,
+                  isWideScreen,
                 ),
-                Flexible(
+
+                // Contenido
+                Expanded(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(20),
+                    padding: EdgeInsets.fromLTRB(
+                      isWideScreen ? 32 : 20,
+                      0,
+                      isWideScreen ? 32 : 20,
+                      isWideScreen ? 32 : 20,
+                    ),
                     child: Form(
                       key: formKey,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildTextField(
+                          const SizedBox(height: 24),
+
+                          // Información básica
+                          _buildEditTextField(
                             controller: nameController,
-                            label: 'Nombre',
+                            label: 'Nombre de la Cámara',
                             icon: LucideIcons.video,
                             validator: (value) {
                               if (value == null || value.isEmpty) {
@@ -406,26 +436,13 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                               }
                               return null;
                             },
+                            isWideScreen: isWideScreen,
                           ),
-                          const SizedBox(height: 16),
 
-                          // Tipo
-                          Text(
-                            'Tipo',
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<String>(
+                          // Tipo de cámara
+                          _buildEditDropdown(
+                            label: 'Tipo de Cámara',
                             value: selectedType,
-                            decoration: InputDecoration(
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                            ),
                             items:
                                 _cameraTypes.map((type) {
                                   return DropdownMenuItem(
@@ -438,32 +455,14 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                                 selectedType = value;
                               });
                             },
-                            validator: (value) {
-                              if (value == null) {
-                                return 'Selecciona un tipo';
-                              }
-                              return null;
-                            },
+                            icon: LucideIcons.settings,
+                            isWideScreen: isWideScreen,
                           ),
-                          const SizedBox(height: 16),
 
                           // Servidor
-                          Text(
-                            'Servidor',
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<String>(
+                          _buildEditDropdown(
+                            label: 'Servidor',
                             value: selectedServer,
-                            decoration: InputDecoration(
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                            ),
                             items:
                                 _serverNames.map((server) {
                                   return DropdownMenuItem(
@@ -476,18 +475,14 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                                 selectedServer = value;
                               });
                             },
-                            validator: (value) {
-                              if (value == null) {
-                                return 'Selecciona un servidor';
-                              }
-                              return null;
-                            },
+                            icon: LucideIcons.server,
+                            isWideScreen: isWideScreen,
                           ),
-                          const SizedBox(height: 16),
 
-                          _buildTextField(
+                          // IP
+                          _buildEditTextField(
                             controller: ipController,
-                            label: 'IP',
+                            label: 'Dirección IP',
                             icon: LucideIcons.server,
                             validator: (value) {
                               if (value == null || value.isEmpty) {
@@ -495,33 +490,22 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                               }
                               return null;
                             },
+                            keyboardType: TextInputType.number,
+                            isWideScreen: isWideScreen,
                           ),
-                          const SizedBox(height: 16),
 
-                          _buildTextField(
+                          // Dirección
+                          _buildEditTextField(
                             controller: directionController,
-                            label: 'Dirección',
+                            label: 'Dirección Física',
                             icon: LucideIcons.mapPin,
+                            isWideScreen: isWideScreen,
                           ),
-                          const SizedBox(height: 16),
 
                           // Zona
-                          Text(
-                            'Zona',
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<String>(
+                          _buildEditDropdown(
+                            label: 'Zona',
                             value: selectedZone,
-                            decoration: InputDecoration(
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                            ),
                             items:
                                 _zones.map((zone) {
                                   return DropdownMenuItem(
@@ -534,64 +518,55 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                                 selectedZone = value;
                               });
                             },
+                            icon: LucideIcons.map,
+                            isWideScreen: isWideScreen,
                           ),
-                          const SizedBox(height: 16),
 
+                          // Coordenadas
                           Row(
                             children: [
                               Expanded(
-                                child: _buildTextField(
+                                child: _buildEditTextField(
                                   controller: latitudeController,
                                   label: 'Latitud',
                                   icon: LucideIcons.mapPin,
                                   keyboardType: TextInputType.number,
+                                  isWideScreen: isWideScreen,
                                 ),
                               ),
                               const SizedBox(width: 16),
                               Expanded(
-                                child: _buildTextField(
+                                child: _buildEditTextField(
                                   controller: longitudeController,
                                   label: 'Longitud',
                                   icon: LucideIcons.mapPin,
                                   keyboardType: TextInputType.number,
+                                  isWideScreen: isWideScreen,
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 16),
 
-                          _buildTextField(
+                          // Credenciales
+                          _buildEditTextField(
                             controller: userController,
                             label: 'Usuario',
                             icon: LucideIcons.user,
+                            isWideScreen: isWideScreen,
                           ),
-                          const SizedBox(height: 16),
 
-                          _buildTextField(
+                          _buildEditTextField(
                             controller: passwordController,
                             label: 'Contraseña',
                             icon: LucideIcons.lock,
                             obscureText: true,
+                            isWideScreen: isWideScreen,
                           ),
-                          const SizedBox(height: 16),
 
                           // Responsable
-                          Text(
-                            'Responsable',
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<String>(
+                          _buildEditDropdown(
+                            label: 'Responsable',
                             value: selectedResponsible,
-                            decoration: InputDecoration(
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                            ),
                             items:
                                 _teams.map((team) {
                                   return DropdownMenuItem(
@@ -604,9 +579,13 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                                 selectedResponsible = value;
                               });
                             },
+                            icon: LucideIcons.users,
+                            isWideScreen: isWideScreen,
                           ),
-                          const SizedBox(height: 24),
 
+                          const SizedBox(height: 32),
+
+                          // Botones de acción
                           Row(
                             children: [
                               Expanded(
@@ -615,14 +594,20 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.grey.shade300,
                                     foregroundColor: Colors.grey.shade700,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 16,
+                                    padding: EdgeInsets.symmetric(
+                                      vertical: isWideScreen ? 18 : 16,
                                     ),
                                     shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
+                                      borderRadius: BorderRadius.circular(12),
                                     ),
                                   ),
-                                  child: const Text('Cancelar'),
+                                  child: Text(
+                                    'Cancelar',
+                                    style: TextStyle(
+                                      fontSize: isWideScreen ? 16 : 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
                                 ),
                               ),
                               const SizedBox(width: 16),
@@ -725,14 +710,24 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.orange,
                                     foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 16,
+                                    padding: EdgeInsets.symmetric(
+                                      vertical: isWideScreen ? 18 : 16,
                                     ),
                                     shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    elevation: 2,
+                                    shadowColor: Colors.orange.withValues(
+                                      alpha: 0.3,
                                     ),
                                   ),
-                                  child: const Text('Agregar'),
+                                  child: Text(
+                                    'Agregar Cámara',
+                                    style: TextStyle(
+                                      fontSize: isWideScreen ? 16 : 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ],
@@ -2314,7 +2309,7 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
     bool isWideScreen,
   ) {
     return GestureDetector(
-      onTap: () => setState(() => _showCameras = isSelected),
+      onTap: () => setState(() => _showCameras = label == 'Cámaras'),
       child: Container(
         padding: EdgeInsets.symmetric(
           vertical: isWideScreen ? 20 : 16,
@@ -2406,6 +2401,82 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                 const SizedBox(height: 4),
                 Text(
                   'Modifica los datos del dispositivo',
+                  style: TextStyle(
+                    fontSize: isWideScreen ? 16 : 14,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white.withValues(alpha: 0.9),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: IconButton(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.close, color: Colors.white),
+              iconSize: isWideScreen ? 24 : 20,
+              padding: const EdgeInsets.all(12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAddDialogHeader(
+    BuildContext context,
+    String title,
+    IconData icon,
+    bool isWideScreen,
+  ) {
+    return Container(
+      padding: EdgeInsets.all(isWideScreen ? 32 : 24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Colors.orange.shade400, Colors.orange.shade600],
+        ),
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              icon,
+              color: Colors.white,
+              size: isWideScreen ? 28 : 24,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: isWideScreen ? 22 : 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Agrega un nuevo dispositivo al sistema',
                   style: TextStyle(
                     fontSize: isWideScreen ? 16 : 14,
                     fontWeight: FontWeight.w500,
@@ -2819,7 +2890,7 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text(
-                                  item['type'].toString(),
+                                  _translateCameraType(item['type']),
                                   style: TextStyle(
                                     fontSize: isWideScreen ? 12 : 11,
                                     fontWeight: FontWeight.w600,
