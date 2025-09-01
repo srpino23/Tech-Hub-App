@@ -287,7 +287,8 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
       // Filtro por tipo (solo para cámaras)
       if (_showCameras && _selectedTypeFilter != null) {
         final itemType = item['type'] as String?;
-        if (itemType != _selectedTypeFilter) return false;
+        final translatedType = _translateCameraType(itemType);
+        if (translatedType != _selectedTypeFilter) return false;
       }
 
       // Filtro por zona (case-insensitive)

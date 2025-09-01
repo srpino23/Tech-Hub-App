@@ -854,16 +854,20 @@ class _MapScreenState extends State<MapScreen> {
     showDialog(
       context: context,
       builder: (BuildContext context) {
+        final isWideScreen = MediaQuery.of(context).size.width > 600;
+
         return Dialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(20),
           ),
           elevation: 0,
-          insetPadding: const EdgeInsets.all(16),
+          insetPadding: EdgeInsets.all(isWideScreen ? 32 : 16),
           child: Container(
             width: double.infinity,
             constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width - 32,
+              maxWidth:
+                  isWideScreen ? 800 : MediaQuery.of(context).size.width - 32,
+              maxHeight: MediaQuery.of(context).size.height * 0.85,
             ),
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -871,225 +875,492 @@ class _MapScreenState extends State<MapScreen> {
                 end: Alignment.bottomRight,
                 colors: [
                   Colors.white,
-                  Colors.orange.shade50.withValues(alpha: 0.3),
+                  Colors.orange.shade50.withValues(alpha: 0.2),
                 ],
               ),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.orange.withValues(alpha: 0.1),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
+                  color: Colors.orange.withValues(alpha: 0.15),
+                  blurRadius: 30,
+                  offset: const Offset(0, 15),
                 ),
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 5),
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 15,
+                  offset: const Offset(0, 8),
                 ),
               ],
             ),
-            padding: const EdgeInsets.all(20),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        camera['name'] as String,
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 2,
-                      ),
+                // Header mejorado
+                _buildMapDialogHeader(context, camera, isWideScreen),
+
+                // Contenido con mejor organización
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(
+                      isWideScreen ? 32 : 20,
+                      0,
+                      isWideScreen ? 32 : 20,
+                      isWideScreen ? 32 : 20,
                     ),
-                    const SizedBox(width: 12),
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [Colors.grey.shade50, Colors.grey.shade100],
-                        ),
-                        borderRadius: BorderRadius.circular(8),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.05),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close, color: Colors.grey),
-                        iconSize: 20,
-                        padding: const EdgeInsets.all(8),
-                        constraints: const BoxConstraints(
-                          minWidth: 36,
-                          minHeight: 36,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                _buildInfoRow('IP', camera['ip'] as String),
-                _buildInfoRow(
-                  'Tipo',
-                  _translateCameraType(camera['type'] as String),
-                ),
-                _buildInfoRow(
-                  'Estado',
-                  _translateStatus(camera['status'] as String),
-                ),
-                _buildInfoRow(
-                  'Dirección',
-                  camera['direction'] as String? ?? 'No especificada',
-                ),
-                _buildInfoRow(
-                  'Zona',
-                  camera['zone'] as String? ?? 'No especificada',
-                ),
-                _buildInfoRow(
-                  'Responsable',
-                  camera['liable'] as String? ?? 'No asignado',
-                ),
-                const SizedBox(height: 16),
-                if (camera['latitude'] != null && camera['longitude'] != null)
-                  Container(
-                    height: 200,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade300),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Stack(
-                        children: [
-                          FlutterMap(
-                            options: MapOptions(
-                              initialCenter: LatLng(
-                                camera['latitude'] as double,
-                                camera['longitude'] as double,
-                              ),
-                              initialZoom: 15.0,
-                              maxZoom: 16.0,
-                              minZoom: 10.0,
-                              interactionOptions: const InteractionOptions(
-                                flags:
-                                    InteractiveFlag.all &
-                                    ~InteractiveFlag.rotate &
-                                    ~InteractiveFlag.flingAnimation,
-                              ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Espaciado desde el header
+                        const SizedBox(height: 24),
+
+                        // Sección de información básica
+                        _buildMapInfoSection(
+                          'Información General',
+                          LucideIcons.info,
+                          Colors.blue,
+                          [
+                            _buildMapDetailRow(
+                              'Estado',
+                              _translateStatus(camera['status'] as String),
+                              _getStatusIcon(camera['status'] as String),
+                              _getStatusColor(camera['status'] as String),
                             ),
-                            children: [
-                              TileLayer(
-                                urlTemplate:
-                                    'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-                                subdomains: const ['a', 'b', 'c', 'd'],
-                                userAgentPackageName:
-                                    'com.example.techhub_mobile',
-                                maxZoom: 16,
-                                retinaMode: false,
-                              ),
-                              MarkerLayer(
-                                markers: [
-                                  Marker(
-                                    point: LatLng(
-                                      camera['latitude'] as double,
-                                      camera['longitude'] as double,
-                                    ),
-                                    child: const Icon(
-                                      Icons.location_on,
-                                      color: Colors.red,
-                                      size: 30,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          Positioned(
-                            bottom: 8,
-                            right: 8,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.black54,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                '${camera['latitude']}, ${camera['longitude']}',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                ),
-                              ),
+                            _buildMapDetailRow(
+                              'Tipo',
+                              _translateCameraType(camera['type'] as String),
+                              LucideIcons.video,
+                              Colors.grey.shade600,
                             ),
-                          ),
-                        ],
-                      ),
+                            _buildMapDetailRow(
+                              'IP',
+                              camera['ip'] as String,
+                              LucideIcons.globe,
+                              Colors.grey.shade600,
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Sección de ubicación
+                        _buildMapInfoSection(
+                          'Ubicación y Responsabilidad',
+                          LucideIcons.mapPin,
+                          Colors.purple,
+                          [
+                            _buildMapDetailRow(
+                              'Dirección',
+                              camera['direction'] as String? ??
+                                  'No especificada',
+                              LucideIcons.mapPin,
+                              Colors.purple.shade600,
+                            ),
+                            _buildMapDetailRow(
+                              'Zona',
+                              camera['zone'] as String? ?? 'No especificada',
+                              LucideIcons.map,
+                              Colors.purple.shade600,
+                            ),
+                            _buildMapDetailRow(
+                              'Responsable',
+                              camera['liable'] as String? ?? 'No asignado',
+                              LucideIcons.user,
+                              Colors.purple.shade600,
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Sección de mapa (si tiene coordenadas)
+                        if (camera['latitude'] != null &&
+                            camera['longitude'] != null)
+                          _buildMapLocationSection(camera, isWideScreen),
+                      ],
                     ),
                   ),
-                const SizedBox(height: 16),
-                if (camera['latitude'] != null && camera['longitude'] != null)
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      GestureDetector(
-                        onTap:
-                            () => _copyLocation(
-                              context,
-                              camera['latitude'] as double,
-                              camera['longitude'] as double,
-                            ),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 28,
-                            vertical: 14,
-                          ),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                Colors.orange.shade400,
-                                Colors.orange.shade600,
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.orange.withValues(alpha: 0.3),
-                                blurRadius: 8,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: const Center(
-                            child: Text(
-                              'Copiar ubicación',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                ),
               ],
             ),
           ),
         );
       },
+    );
+  }
+
+  // Helper methods for improved camera dialog
+
+  Widget _buildMapDialogHeader(
+    BuildContext context,
+    Map<String, dynamic> camera,
+    bool isWideScreen,
+  ) {
+    return Container(
+      padding: EdgeInsets.all(isWideScreen ? 32 : 24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Colors.orange.shade400, Colors.orange.shade600],
+        ),
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              LucideIcons.video,
+              color: Colors.white,
+              size: isWideScreen ? 28 : 24,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Detalles de la Cámara',
+                  style: TextStyle(
+                    fontSize: isWideScreen ? 16 : 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white.withValues(alpha: 0.9),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  camera['name'] as String,
+                  style: TextStyle(
+                    fontSize: isWideScreen ? 22 : 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: IconButton(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.close, color: Colors.white),
+              iconSize: isWideScreen ? 24 : 20,
+              padding: const EdgeInsets.all(12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMapInfoSection(
+    String title,
+    IconData icon,
+    Color color,
+    List<Widget> children,
+  ) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  color.withValues(alpha: 0.1),
+                  color.withValues(alpha: 0.05),
+                ],
+              ),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(icon, color: color, size: 18),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: color.withValues(alpha: 0.9),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(children: children),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMapDetailRow(
+    String label,
+    String value,
+    IconData icon,
+    Color iconColor,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Icon(icon, size: 16, color: iconColor),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey.shade900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMapLocationSection(
+    Map<String, dynamic> camera,
+    bool isWideScreen,
+  ) {
+    return _buildMapInfoSection(
+      'Mapa de Ubicación',
+      LucideIcons.map,
+      Colors.green,
+      [
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.green.shade200),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: _buildDetailedMapSection(camera),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDetailedMapSection(Map<String, dynamic> camera) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          height: 250,
+          width: double.infinity,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.green.withValues(alpha: 0.1),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Stack(
+              children: [
+                FlutterMap(
+                  options: MapOptions(
+                    initialCenter: LatLng(
+                      camera['latitude'] as double,
+                      camera['longitude'] as double,
+                    ),
+                    initialZoom: 16.0,
+                    maxZoom: 18.0,
+                    minZoom: 5.0,
+                    interactionOptions: const InteractionOptions(
+                      flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+                    ),
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate:
+                          'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+                      subdomains: const ['a', 'b', 'c', 'd'],
+                      userAgentPackageName: 'com.example.techhub_mobile',
+                    ),
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          point: LatLng(
+                            camera['latitude'] as double,
+                            camera['longitude'] as double,
+                          ),
+                          width: 50,
+                          height: 50,
+                          child: Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade600,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 3),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.orange.withValues(alpha: 0.4),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.2),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              LucideIcons.video,
+                              color: Colors.white,
+                              size: 26,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                Positioned(
+                  bottom: 12,
+                  left: 12,
+                  right: 12,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.8),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${camera['latitude']}, ${camera['longitude']}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap:
+                              () => _copyLocationFromMapDialog(
+                                context,
+                                camera['latitude'] as double,
+                                camera['longitude'] as double,
+                              ),
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade600,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Icon(
+                              LucideIcons.copy,
+                              color: Colors.white,
+                              size: 14,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _copyLocationFromMapDialog(
+    BuildContext context,
+    double latitude,
+    double longitude,
+  ) async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    await Clipboard.setData(ClipboardData(text: '$latitude,$longitude'));
+    if (!mounted) return;
+
+    scaffoldMessenger.showSnackBar(
+      SnackBar(
+        content: const Text('Ubicación copiada al portapapeles'),
+        duration: const Duration(seconds: 2),
+        backgroundColor: Colors.green,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
     );
   }
 
@@ -1401,94 +1672,6 @@ class _MapScreenState extends State<MapScreen> {
     }
 
     return polygons;
-  }
-
-  Widget _buildInfoRow(String label, String value) {
-    IconData icon;
-    Color iconColor;
-
-    switch (label.toLowerCase()) {
-      case 'ip':
-        icon = Icons.router;
-        iconColor = Colors.grey;
-        break;
-      case 'tipo':
-        icon = Icons.videocam;
-        iconColor = Colors.grey;
-        break;
-      case 'estado':
-        icon = _getStatusIcon(value);
-        iconColor = _getStatusColor(value);
-        break;
-      case 'dirección':
-        icon = Icons.signpost;
-        iconColor = Colors.grey;
-        break;
-      case 'zona':
-        icon = Icons.location_on;
-        iconColor = Colors.grey;
-        break;
-      case 'responsable':
-        icon = Icons.person;
-        iconColor = Colors.grey;
-        break;
-      default:
-        icon = Icons.info;
-        iconColor = Colors.grey;
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 16, color: iconColor),
-              const SizedBox(width: 8),
-              Text(
-                '$label:',
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Padding(
-            padding: const EdgeInsets.only(left: 24),
-            child: Text(
-              value,
-              style: const TextStyle(color: Colors.grey),
-              maxLines: label == 'Descripción' ? 3 : 2,
-              overflow: TextOverflow.ellipsis,
-              softWrap: true,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _copyLocation(
-    BuildContext dialogContext,
-    double latitude,
-    double longitude,
-  ) async {
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
-    final navigator = Navigator.of(dialogContext);
-    await Clipboard.setData(ClipboardData(text: '$latitude,$longitude'));
-    if (!mounted) return;
-
-    navigator.pop();
-
-    scaffoldMessenger.showSnackBar(
-      SnackBar(
-        content: const Text('Ubicación copiada al portapapeles'),
-        duration: const Duration(seconds: 2),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
   }
 
   @override
