@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -45,14 +46,57 @@ class _MapScreenState extends State<MapScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  // Auto refresh
+  Timer? _refreshTimer;
+  bool _autoRefreshEnabled = true;
+  static const Duration _refreshInterval = Duration(
+    minutes: 2,
+  ); // Actualizar cada 2 minutos
+
   @override
   void initState() {
     super.initState();
     _loadData();
+    _startAutoRefresh();
   }
 
   Future<void> _loadData() async {
     await Future.wait([_loadZoneBoundaries(), _loadCameras(), _loadUsers()]);
+  }
+
+  void _startAutoRefresh() {
+    if (!_autoRefreshEnabled) return;
+
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer.periodic(_refreshInterval, (timer) {
+      if (mounted && _autoRefreshEnabled) {
+        _refreshData();
+      } else {
+        timer.cancel();
+      }
+    });
+  }
+
+  void _toggleAutoRefresh() {
+    setState(() {
+      _autoRefreshEnabled = !_autoRefreshEnabled;
+    });
+
+    if (_autoRefreshEnabled) {
+      _startAutoRefresh();
+    } else {
+      _stopAutoRefresh();
+    }
+  }
+
+  void _stopAutoRefresh() {
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
+  }
+
+  Future<void> _refreshData() async {
+    // Solo refrescar cámaras y usuarios, no los límites de zona ya que no cambian
+    await Future.wait([_loadCameras(), _loadUsers()]);
   }
 
   Future<void> _loadZoneBoundaries() async {
@@ -1466,6 +1510,14 @@ class _MapScreenState extends State<MapScreen> {
               activeColor: Colors.red,
             ),
           ],
+          const SizedBox(height: 16),
+          _buildControlButton(
+            icon: _autoRefreshEnabled ? LucideIcons.pause : LucideIcons.play,
+            label: _autoRefreshEnabled ? 'Pausar' : 'Reanudar',
+            isActive: _autoRefreshEnabled,
+            onPressed: _toggleAutoRefresh,
+            activeColor: Colors.green,
+          ),
         ],
       ),
     );
@@ -1579,7 +1631,7 @@ class _MapScreenState extends State<MapScreen> {
           // Barra de búsqueda
           if (_showSearch) _buildSearchBar(),
 
-          // Indicador de carga
+          // Indicador de carga y auto-refresh
           if (_isLoadingCameras || _isLoadingBoundaries || _isLoadingUsers)
             Positioned(
               top: 16,
@@ -1608,6 +1660,50 @@ class _MapScreenState extends State<MapScreen> {
                     Text(
                       'Cargando...',
                       style: TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+          // Indicador de auto-refresh (solo cuando no está cargando inicialmente)
+          if (!(_isLoadingCameras || _isLoadingBoundaries || _isLoadingUsers))
+            Positioned(
+              bottom: 16,
+              left: 16,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color:
+                      _autoRefreshEnabled
+                          ? Colors.green.shade700.withValues(alpha: 0.9)
+                          : Colors.orange.shade700.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white, width: 1),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _autoRefreshEnabled
+                          ? LucideIcons.refreshCw
+                          : LucideIcons.pause,
+                      color: Colors.white,
+                      size: 14,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _autoRefreshEnabled
+                          ? 'Auto-actualización activa'
+                          : 'Auto-actualización pausada',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ],
                 ),
@@ -1676,6 +1772,7 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   void dispose() {
+    _stopAutoRefresh();
     _mapController.dispose();
     _searchController.dispose();
     super.dispose();
