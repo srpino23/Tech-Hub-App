@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../services/analyzer_api_client.dart';
-import '../services/techhub_api_client.dart';
 
 class CameraCrudPopup extends StatefulWidget {
   const CameraCrudPopup({super.key});
@@ -23,7 +22,6 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
   // Datos
   List<Map<String, dynamic>> _cameras = [];
   List<Map<String, dynamic>> _servers = [];
-  List<Map<String, dynamic>> _teams = [];
 
   // Estados de carga
   bool _isLoadingCameras = true;
@@ -40,6 +38,7 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
   ];
   List<String> _zones = [];
   List<String> _serverNames = [];
+  List<String> _responsibles = []; // Lista de responsables únicos
 
   @override
   void initState() {
@@ -48,7 +47,7 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
   }
 
   Future<void> _loadData() async {
-    await Future.wait([_loadCameras(), _loadServers(), _loadTeams()]);
+    await Future.wait([_loadCameras(), _loadServers()]);
   }
 
   Future<void> _loadCameras() async {
@@ -60,6 +59,7 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
             _cameras = response.data!;
             _isLoadingCameras = false;
             _extractZones();
+            _extractResponsibles();
           });
         } else {
           setState(() {
@@ -101,32 +101,22 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
     }
   }
 
-  Future<void> _loadTeams() async {
-    try {
-      final response = await TechHubApiClient.getTeams();
-      if (mounted) {
-        if (response.isSuccess && response.data != null) {
-          setState(() {
-            _teams = response.data!;
-          });
-        }
-      }
-    } catch (e) {
-      // Manejar error silenciosamente
-    }
-  }
-
   void _extractZones() {
-    final zones = <String>{};
+    final zones = <String>{}; // Set para evitar duplicados
+
     for (final camera in _cameras) {
       final zone = camera['zone'] as String?;
       if (zone != null && zone.isNotEmpty) {
-        // Normalizar zonas a minúsculas para evitar duplicados
-        zones.add(zone.toLowerCase());
+        final cleanZone = zone.trim();
+        final normalizedZone = _normalizeString(cleanZone);
+        zones.add(normalizedZone);
       }
     }
+
     setState(() {
-      _zones = zones.toList()..sort();
+      _zones =
+          zones.toList()
+            ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     });
   }
 
@@ -143,6 +133,25 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
     });
   }
 
+  void _extractResponsibles() {
+    final responsibles = <String>{}; // Set para evitar duplicados
+
+    for (final camera in _cameras) {
+      final liable = camera['liable'] as String?;
+      if (liable != null && liable.isNotEmpty) {
+        final cleanLiable = liable.trim();
+        final normalizedLiable = _normalizeString(cleanLiable);
+        responsibles.add(normalizedLiable);
+      }
+    }
+
+    setState(() {
+      _responsibles =
+          responsibles.toList()
+            ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    });
+  }
+
   // Función para obtener el ID del servidor por nombre
   String? _getServerIdByName(String serverName) {
     for (final server in _servers) {
@@ -151,6 +160,50 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
       }
     }
     return null;
+  }
+
+  // Función para encontrar un valor normalizado en una lista
+  String? _findValueInList(List<String> list, String? value) {
+    if (value == null || value.isEmpty) return null;
+
+    final normalizedValue = _normalizeString(value);
+
+    // Buscar coincidencia exacta
+    for (final item in list) {
+      if (item == normalizedValue) {
+        return item;
+      }
+    }
+
+    return null; // Si no se encuentra, devolver null
+  }
+
+  // Función para normalizar strings
+  String _normalizeString(String? value) {
+    if (value == null || value.isEmpty) return '';
+
+    final cleanValue = value.trim().toLowerCase();
+
+    // Casos especiales para siglas conocidas
+    if (cleanValue == 'com' || cleanValue == 'edla') {
+      return cleanValue.toUpperCase();
+    }
+
+    // Normalización estándar: capitalizar primera letra de cada palabra
+    return cleanValue
+        .split(' ')
+        .map((word) {
+          if (word.isEmpty) return '';
+
+          // Casos especiales para preposiciones y artículos
+          if (['de', 'del', 'la', 'el', 'y'].contains(word)) {
+            return word;
+          }
+
+          return word[0].toUpperCase() + word.substring(1);
+        })
+        .join(' ')
+        .trim();
   }
 
   void _clearAllFilters() {
@@ -240,7 +293,8 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
       // Filtro por zona (case-insensitive)
       if (_selectedZoneFilter != null) {
         final itemZone = item['zone'] as String?;
-        if (itemZone?.toLowerCase() != _selectedZoneFilter!.toLowerCase()) {
+        if (_normalizeString(itemZone) !=
+            _normalizeString(_selectedZoneFilter)) {
           return false;
         }
       }
@@ -568,10 +622,10 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                             label: 'Responsable',
                             value: selectedResponsible,
                             items:
-                                _teams.map((team) {
+                                _responsibles.map((responsible) {
                                   return DropdownMenuItem(
-                                    value: team['name'] as String?,
-                                    child: Text(team['name'] as String? ?? ''),
+                                    value: responsible,
+                                    child: Text(responsible),
                                   );
                                 }).toList(),
                             onChanged: (value) {
@@ -651,7 +705,9 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                                           'name': nameController.text,
                                           'type': mappedType,
                                           'direction': directionController.text,
-                                          'zone': selectedZone,
+                                          'zone': _normalizeString(
+                                            selectedZone,
+                                          ),
                                           'longitude':
                                               double.tryParse(
                                                 longitudeController.text,
@@ -666,9 +722,9 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                                           'password': passwordController.text,
                                           'ip': ipController.text,
                                           'serverId': serverId,
-                                          'liable':
-                                              selectedResponsible
-                                                  ?.toLowerCase(),
+                                          'liable': _normalizeString(
+                                            selectedResponsible,
+                                          ),
                                         };
 
                                         final response =
@@ -968,6 +1024,7 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
     TextInputType? keyboardType,
     bool obscureText = false,
     bool isWideScreen = false,
+    ValueChanged<String>? onChanged,
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
@@ -988,6 +1045,7 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
             validator: validator,
             keyboardType: keyboardType,
             obscureText: obscureText,
+            onChanged: onChanged,
             style: TextStyle(fontSize: isWideScreen ? 16 : 14),
             decoration: InputDecoration(
               prefixIcon: Container(
@@ -1153,13 +1211,11 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
     );
 
     String? selectedType = camera['type'] as String?;
-    String? selectedZone = camera['zone'] as String?;
-    String? selectedResponsible = camera['liable'] as String?;
-
-    // Normalizar la zona para que coincida con las opciones del dropdown (minúsculas)
-    if (selectedZone != null) {
-      selectedZone = selectedZone.toLowerCase();
-    }
+    String? selectedZone = _findValueInList(_zones, camera['zone'] as String?);
+    String? selectedResponsible = _findValueInList(
+      _responsibles,
+      camera['liable'] as String?,
+    );
 
     // Normalizar el tipo de cámara para que coincida con las opciones del dropdown
     if (selectedType != null) {
@@ -1180,19 +1236,6 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
         default:
           // Si no coincide, usar el valor original
           break;
-      }
-    }
-
-    // Normalizar el responsable: si existe en la lista de equipos, usar el valor de la lista
-    if (selectedResponsible != null) {
-      final matchingTeam = _teams.firstWhere(
-        (team) =>
-            (team['name'] as String?)?.toLowerCase() ==
-            selectedResponsible!.toLowerCase(),
-        orElse: () => <String, dynamic>{},
-      );
-      if (matchingTeam.isNotEmpty) {
-        selectedResponsible = matchingTeam['name'] as String?;
       }
     }
 
@@ -1390,12 +1433,10 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                                   label: 'Responsable',
                                   value: selectedResponsible,
                                   items:
-                                      _teams.map((team) {
+                                      _responsibles.map((responsible) {
                                         return DropdownMenuItem(
-                                          value: team['name'] as String?,
-                                          child: Text(
-                                            team['name'] as String? ?? '',
-                                          ),
+                                          value: responsible,
+                                          child: Text(responsible),
                                         );
                                       }).toList(),
                                   onChanged: (value) {
@@ -1469,7 +1510,9 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                                                 'type': mappedType,
                                                 'direction':
                                                     directionController.text,
-                                                'zone': selectedZone,
+                                                'zone': _normalizeString(
+                                                  selectedZone,
+                                                ),
                                                 'longitude':
                                                     double.tryParse(
                                                       longitudeController.text,
@@ -1484,9 +1527,9 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                                                 'password':
                                                     passwordController.text,
                                                 'ip': ipController.text,
-                                                'liable':
-                                                    selectedResponsible
-                                                        ?.toLowerCase(),
+                                                'liable': _normalizeString(
+                                                  selectedResponsible,
+                                                ),
                                               };
 
                                               final response =
