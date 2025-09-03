@@ -16,53 +16,149 @@ import 'create_report_screen.dart';
 
 // Static helper function for PDF generation
 String _extractUserNameStatic(Map<String, dynamic> user) {
-  final combinations = [
-    ['fullName'],
-    ['firstName', 'lastName'],
-    ['name', 'surname'],
-    ['nombre', 'apellido'],
-    ['first_name', 'last_name'],
-  ];
+  // Usar directamente name y surname si están disponibles
+  final name = user['name']?.toString().trim() ?? '';
+  final surname = user['surname']?.toString().trim() ?? '';
 
-  for (final combo in combinations) {
-    final parts = combo
-        .map((field) => user[field]?.toString().trim() ?? '')
-        .where((part) => part.isNotEmpty);
-    if (parts.length == combo.length) {
-      return parts.join(' ');
-    }
+  if (name.isNotEmpty && surname.isNotEmpty) {
+    return '$name $surname';
+  } else if (name.isNotEmpty) {
+    return name;
+  } else if (surname.isNotEmpty) {
+    return surname;
   }
 
-  final name = user['name']?.toString().trim();
-  return name?.isNotEmpty == true ? name! : 'Desconocido';
+  // Fallback a otros campos comunes
+  final fullName = user['fullName']?.toString().trim();
+  if (fullName?.isNotEmpty == true) {
+    return fullName!;
+  }
+
+  return 'Desconocido';
+}
+
+// Función que se ejecuta en isolate separado para generar PDF completo
+Future<Map<String, dynamic>> _generatePDFInBackground(
+  Map<String, dynamic> data,
+) async {
+  try {
+    final report = data['report'] as Map<String, dynamic>;
+    final users = data['users'] as List<Map<String, dynamic>>;
+    final imageUrls = data['imageUrls'] as List;
+    final inventory = data['inventory'] as List<Map<String, dynamic>>;
+
+    // 1. Descargar imágenes en paralelo con timeout más agresivo
+    List<List<int>> imageBytes = [];
+    if (imageUrls.isNotEmpty) {
+      final limitedUrls =
+          imageUrls.take(4).toList(); // Reducir a 4 imágenes máximo
+      final futures = limitedUrls.map((url) async {
+        try {
+          final response = await http
+              .get(
+                Uri.parse(url.toString()),
+                headers: {'User-Agent': 'TechHub-Mobile/1.0'},
+              )
+              .timeout(const Duration(seconds: 5)); // Reducir timeout
+
+          if (response.statusCode == 200) {
+            return response.bodyBytes;
+          }
+        } catch (e) {
+          // Silenciar errores de imagen individual
+        }
+        return null;
+      });
+
+      final results = await Future.wait(futures);
+      for (final result in results) {
+        if (result != null) {
+          imageBytes.add(result);
+        }
+      }
+    }
+
+    // 2. Generar PDF
+    final pdf = await _generateReportPDFStatic({
+      'report': report,
+      'users': users,
+      'imageBytes': imageBytes,
+      'inventory': inventory, // Pasar el inventario
+    });
+
+    // 3. Convertir a bytes
+    final bytes = await pdf.save();
+
+    // 4. Preparar nombre del archivo
+    String userName = 'Usuario';
+    try {
+      final userId = report['userId']?.toString();
+      if (userId != null && users.isNotEmpty) {
+        final user = users.firstWhere(
+          (user) =>
+              user['_id']?.toString() == userId ||
+              user['userId']?.toString() == userId,
+          orElse: () => <String, dynamic>{},
+        );
+        if (user.isNotEmpty) {
+          userName = _extractUserNameStatic(user);
+        }
+      }
+    } catch (e) {
+      // Usar nombre por defecto si falla
+    }
+
+    final fileName =
+        'Remito_${userName.replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+
+    // 5. Descargar/guardar PDF
+    await PDFDownloadHelper.downloadPDF(bytes: bytes, fileName: fileName);
+
+    return {
+      'success': true,
+      'bytes': bytes,
+      'fileName': fileName,
+      'error': null,
+    };
+  } catch (e) {
+    return {
+      'success': false,
+      'bytes': null,
+      'fileName': null,
+      'error': e.toString(),
+    };
+  }
 }
 
 Future<pw.Document> _generateReportPDFStatic(Map<String, dynamic> data) async {
   final report = data['report'] as Map<String, dynamic>;
   final users = data['users'] as List<Map<String, dynamic>>;
   final imageBytes = data['imageBytes'] as List<List<int>>?;
+  final inventory = data['inventory'] as List<Map<String, dynamic>>;
 
   final pdf = pw.Document();
 
-  // Helper function to get user name
+  // Helper function to get user name - optimizada
   String getUserName(String? userId) {
     if (userId == null) return 'Desconocido';
-    final user = users.firstWhere(
-      (user) =>
-          user['userId']?.toString() == userId ||
-          user['_id']?.toString() == userId,
-      orElse: () => <String, dynamic>{},
-    );
-
-    return user.isNotEmpty ? _extractUserNameStatic(user) : 'Desconocido';
+    try {
+      final user = users.firstWhere(
+        (user) =>
+            user['userId']?.toString() == userId ||
+            user['_id']?.toString() == userId,
+        orElse: () => <String, dynamic>{},
+      );
+      return user.isNotEmpty ? _extractUserNameStatic(user) : 'Desconocido';
+    } catch (e) {
+      return 'Desconocido';
+    }
   }
 
-  // Preparar widgets para el PDF
+  // Preparar widgets para el PDF de manera más eficiente
   final List<pw.Widget> pdfWidgets = [
     // Header del documento
     _buildPDFHeader(report, getUserName),
-    pw.SizedBox(height: 20),
-
+    pw.SizedBox(height: 16), // Reducir espaciado
     // Información general
     _buildPDFInfoSection('Información General', [
       _buildPDFInfoRow(
@@ -84,49 +180,43 @@ Future<pw.Document> _generateReportPDFStatic(Map<String, dynamic> data) async {
         report['connectivity']?.toString() ?? 'N/A',
       ),
     ]),
-    pw.SizedBox(height: 20),
+    pw.SizedBox(height: 16),
   ];
 
-  // Ubicación
-  if (report['location'] != null) {
+  // Agregar secciones condicionales solo si tienen contenido
+  final location = report['location'];
+  if (location != null) {
     pdfWidgets.addAll([
       _buildPDFInfoSection('Ubicación', [
-        _buildPDFInfoRow(
-          'Coordenadas',
-          _getLocationText(report['location']) ?? 'N/A',
-        ),
+        _buildPDFInfoRow('Coordenadas', _getLocationText(location) ?? 'N/A'),
       ]),
-      pw.SizedBox(height: 20),
+      pw.SizedBox(height: 16),
     ]);
   }
 
-  // Descripción del trabajo
-  if (report['toDo'] != null && report['toDo'].toString().isNotEmpty) {
+  final toDo = report['toDo']?.toString();
+  if (toDo != null && toDo.isNotEmpty) {
     pdfWidgets.addAll([
       _buildPDFInfoSection('Trabajo Realizado', [
-        pw.Paragraph(
-          text: report['toDo'].toString(),
-          style: const pw.TextStyle(fontSize: 12),
-        ),
+        pw.Paragraph(text: toDo, style: const pw.TextStyle(fontSize: 12)),
       ]),
-      pw.SizedBox(height: 20),
+      pw.SizedBox(height: 16),
     ]);
   }
 
-  // Información técnica
-  if (report['connectivity'] == 'Fibra óptica' ||
-      report['connectivity'] == 'Enlace') {
+  final connectivity = report['connectivity']?.toString();
+  if (connectivity == 'Fibra óptica' || connectivity == 'Enlace') {
     pdfWidgets.addAll([
       _buildPDFTechnicalSection(report),
-      pw.SizedBox(height: 20),
+      pw.SizedBox(height: 16),
     ]);
   }
 
-  // Materiales utilizados
-  if (report['supplies'] != null && (report['supplies'] as List).isNotEmpty) {
+  final supplies = report['supplies'];
+  if (supplies != null && (supplies as List).isNotEmpty) {
     pdfWidgets.addAll([
-      _buildPDFMaterialsSimpleSection(report['supplies']),
-      pw.SizedBox(height: 20),
+      _buildPDFMaterialsSimpleSection(supplies, inventory),
+      pw.SizedBox(height: 16),
     ]);
   }
 
@@ -135,11 +225,11 @@ Future<pw.Document> _generateReportPDFStatic(Map<String, dynamic> data) async {
     pdfWidgets.add(_buildPDFPhotosSection(imageBytes));
   }
 
-  // Build PDF content
+  // Build PDF content con configuración optimizada
   pdf.addPage(
     pw.MultiPage(
       pageFormat: PdfPageFormat.a4,
-      margin: const pw.EdgeInsets.all(32),
+      margin: const pw.EdgeInsets.all(24), // Reducir márgenes
       build: (pw.Context context) => pdfWidgets,
     ),
   );
@@ -152,42 +242,39 @@ pw.Widget _buildPDFHeader(
   Map<String, dynamic> report,
   String Function(String?) getUserName,
 ) {
-  return pw.Header(
-    level: 0,
-    child: pw.Container(
-      padding: const pw.EdgeInsets.all(20),
-      decoration: pw.BoxDecoration(
-        color: PdfColors.orange,
-        borderRadius: pw.BorderRadius.circular(8),
-      ),
-      child: pw.Row(
-        children: [
-          pw.Expanded(
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text(
-                  'REMITO DE TRABAJO',
-                  style: pw.TextStyle(
-                    fontSize: 24,
-                    fontWeight: pw.FontWeight.bold,
-                    color: PdfColors.white,
-                  ),
+  return pw.Container(
+    padding: const pw.EdgeInsets.all(20),
+    decoration: pw.BoxDecoration(
+      color: PdfColors.orange,
+      borderRadius: pw.BorderRadius.circular(8),
+    ),
+    child: pw.Row(
+      children: [
+        pw.Expanded(
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                'REMITO DE TRABAJO',
+                style: pw.TextStyle(
+                  fontSize: 24,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.white,
                 ),
-                pw.SizedBox(height: 5),
-                pw.Text(
-                  'ID: ${report['_id']?.toString() ?? 'N/A'}',
-                  style: pw.TextStyle(fontSize: 12, color: PdfColors.white),
-                ),
-              ],
-            ),
+              ),
+              pw.SizedBox(height: 5),
+              pw.Text(
+                'ID: ${report['_id']?.toString() ?? 'N/A'}',
+                style: pw.TextStyle(fontSize: 12, color: PdfColors.white),
+              ),
+            ],
           ),
-          pw.Text(
-            DateTime.now().toString().split('.')[0],
-            style: pw.TextStyle(fontSize: 10, color: PdfColors.white),
-          ),
-        ],
-      ),
+        ),
+        pw.Text(
+          DateTime.now().toString().split('.')[0],
+          style: pw.TextStyle(fontSize: 10, color: PdfColors.white),
+        ),
+      ],
     ),
   );
 }
@@ -233,39 +320,101 @@ pw.Widget _buildPDFTechnicalSection(Map<String, dynamic> report) {
   return _buildPDFInfoSection('Información Técnica', technicalInfo);
 }
 
-pw.Widget _buildPDFMaterialsSimpleSection(List supplies) {
-  return _buildPDFInfoSection('Materiales Utilizados', [
+pw.Widget _buildPDFMaterialsSimpleSection(
+  List supplies,
+  List<Map<String, dynamic>> inventory,
+) {
+  final List<pw.Widget> materialWidgets = [];
+
+  // Helper function para obtener nombre del material por ID
+  String getMaterialNameById(String materialId) {
+    if (inventory.isEmpty) {
+      return 'Material ID: $materialId';
+    }
+
+    final material = inventory.firstWhere(
+      (material) => material['_id']?.toString() == materialId,
+      orElse: () => <String, dynamic>{},
+    );
+
+    if (material.isNotEmpty) {
+      return material['name']?.toString() ?? 'Material ID: $materialId';
+    }
+
+    return 'Material ID: $materialId';
+  }
+
+  // Agregar cada material individualmente
+  for (int i = 0; i < supplies.length; i++) {
+    final material = supplies[i];
+    if (material != null) {
+      String materialText = '';
+
+      // Extraer información del material según su estructura
+      if (material is Map<String, dynamic>) {
+        // Si tiene materialId, buscar el nombre en el inventario
+        if (material['materialId'] != null) {
+          final materialId = material['materialId'].toString();
+          materialText = getMaterialNameById(materialId);
+        } else if (material['name'] != null) {
+          materialText = material['name'].toString();
+        } else if (material['material'] != null) {
+          materialText = material['material'].toString();
+        } else if (material['description'] != null) {
+          materialText = material['description'].toString();
+        } else {
+          materialText = material.toString();
+        }
+
+        // Agregar cantidad si está disponible
+        if (material['quantity'] != null) {
+          materialText += ' (${material['quantity']})';
+        }
+      } else {
+        materialText = material.toString();
+      }
+
+      materialWidgets.add(
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 2),
+          child: pw.Text(
+            '- $materialText',
+            style: const pw.TextStyle(fontSize: 11),
+          ),
+        ),
+      );
+    }
+  }
+
+  final List<pw.Widget> allWidgets = [
     pw.Text(
-      'Se utilizaron ${supplies.length} material(es) en este trabajo.',
-      style: const pw.TextStyle(fontSize: 12),
+      'Se utilizaron ${supplies.length} material(es):',
+      style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
     ),
     pw.SizedBox(height: 8),
-    pw.Text(
-      'Nota: El detalle completo de materiales está disponible en el sistema digital.',
-      style: pw.TextStyle(
-        fontSize: 10,
-        fontStyle: pw.FontStyle.italic,
-        color: PdfColors.grey600,
-      ),
-    ),
-  ]);
+  ];
+
+  allWidgets.addAll(materialWidgets);
+
+  return _buildPDFInfoSection('Materiales Utilizados', allWidgets);
 }
 
 pw.Widget _buildPDFPhotosSection(List<List<int>> imageBytes) {
   final List<pw.Widget> imageWidgets = [];
 
-  // Usar las imágenes pre-descargadas
-  for (int i = 0; i < imageBytes.length; i++) {
+  // Usar las imágenes pre-descargadas de manera más eficiente
+  for (int i = 0; i < imageBytes.length && i < 3; i++) {
+    // Limitar a 3 imágenes máximo
     try {
       final image = pw.MemoryImage(Uint8List.fromList(imageBytes[i]));
       imageWidgets.add(
         pw.Container(
-          width: 120,
-          height: 120,
-          margin: const pw.EdgeInsets.all(4),
+          width: 100, // Reducir tamaño
+          height: 100, // Reducir tamaño
+          margin: const pw.EdgeInsets.all(3), // Reducir margen
           decoration: pw.BoxDecoration(
             border: pw.Border.all(color: PdfColors.grey300),
-            borderRadius: pw.BorderRadius.circular(8),
+            borderRadius: pw.BorderRadius.circular(6), // Reducir radio
           ),
           child: pw.Image(image, fit: pw.BoxFit.cover),
         ),
@@ -278,7 +427,11 @@ pw.Widget _buildPDFPhotosSection(List<List<int>> imageBytes) {
 
   return _buildPDFInfoSection('Imágenes del Trabajo', [
     if (imageWidgets.isNotEmpty) ...[
-      pw.Wrap(spacing: 8, runSpacing: 8, children: imageWidgets),
+      pw.Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: imageWidgets,
+      ), // Reducir espaciado
     ] else ...[
       pw.Text(
         'Las imágenes no pudieron cargarse.',
@@ -428,6 +581,9 @@ class _WorksScreenState extends State<WorksScreen> {
   String _searchQuery = '';
   bool _isSearching = false;
 
+  List<Map<String, dynamic>> _inventory = [];
+  bool _isInventoryLoaded = false;
+
   @override
   void initState() {
     super.initState();
@@ -472,8 +628,8 @@ class _WorksScreenState extends State<WorksScreen> {
       _reports.clear();
     }
 
-    // Cargar usuarios primero para que estén disponibles cuando se carguen los reportes
-    await _loadUsers();
+    // Cargar usuarios e inventario primero para que estén disponibles cuando se carguen los reportes
+    await Future.wait([_loadUsers(), _loadInventory()]);
 
     // Cargar datos iniciales rápido, luego el resto en segundo plano
     await Future.wait([_loadTasksInitial(), _loadReportsInitial()]);
@@ -816,6 +972,26 @@ class _WorksScreenState extends State<WorksScreen> {
     }
   }
 
+  Future<void> _loadInventory() async {
+    if (_isInventoryLoaded) return; // Ya está cargado
+
+    try {
+      final response = await TechHubApiClient.getInventory();
+
+      if (response.isSuccess && response.data != null) {
+        if (mounted) {
+          setState(() {
+            _inventory = response.data!;
+            _isInventoryLoaded = true;
+          });
+        }
+      }
+    } catch (e) {
+      // Silenciar errores de carga de inventario para no interrumpir la funcionalidad principal
+      debugPrint('Error loading inventory: $e');
+    }
+  }
+
   String _getUserNameById(String userId) {
     if (!_isUsersLoaded || _users.isEmpty) {
       return 'Cargando...';
@@ -832,44 +1008,42 @@ class _WorksScreenState extends State<WorksScreen> {
   }
 
   String _extractUserName(Map<String, dynamic> user) {
-    // Combinaciones comunes de campos
-    final combinations = [
-      ['fullName'],
-      ['firstName', 'lastName'],
-      ['name', 'surname'],
-      ['nombre', 'apellido'],
-      ['first_name', 'last_name'],
-    ];
+    // Usar directamente name y surname si están disponibles
+    final name = user['name']?.toString().trim() ?? '';
+    final surname = user['surname']?.toString().trim() ?? '';
 
-    for (final combo in combinations) {
-      final parts = combo
-          .map((field) => user[field]?.toString().trim() ?? '')
-          .where((part) => part.isNotEmpty);
-      if (parts.length == combo.length) {
-        return parts.join(' ');
-      }
+    if (name.isNotEmpty && surname.isNotEmpty) {
+      return '$name $surname';
+    } else if (name.isNotEmpty) {
+      return name;
+    } else if (surname.isNotEmpty) {
+      return surname;
     }
 
-    // Fallback a name simple
-    final name = user['name']?.toString().trim();
-    return name?.isNotEmpty == true ? name! : 'Usuario desconocido';
+    // Fallback a otros campos comunes
+    final fullName = user['fullName']?.toString().trim();
+    if (fullName?.isNotEmpty == true) {
+      return fullName!;
+    }
+
+    return 'Usuario desconocido';
   }
 
-  Future<List<List<int>>> _downloadImagesForPDF(List imageUrls) async {
-    final List<List<int>> imageBytes = [];
-
-    for (int i = 0; i < imageUrls.length && i < 4; i++) {
-      try {
-        final response = await http.get(Uri.parse(imageUrls[i].toString()));
-        if (response.statusCode == 200) {
-          imageBytes.add(response.bodyBytes);
-        }
-      } catch (e) {
-        debugPrint('Error downloading image: $e');
-      }
+  String _getMaterialNameById(String materialId) {
+    if (!_isInventoryLoaded || _inventory.isEmpty) {
+      return 'Cargando...';
     }
 
-    return imageBytes;
+    final material = _inventory.firstWhere(
+      (material) => material['_id']?.toString() == materialId,
+      orElse: () => <String, dynamic>{},
+    );
+
+    if (material.isNotEmpty) {
+      return material['name']?.toString() ?? 'Material desconocido';
+    }
+
+    return 'Material desconocido';
   }
 
   Future<void> _searchData() async {
@@ -987,9 +1161,10 @@ class _WorksScreenState extends State<WorksScreen> {
       _filterTasks();
     });
 
-    // Si se cambia a remitos y los usuarios no están cargados, cargarlos
-    if (section == 'remitos' && !_isUsersLoaded) {
-      _loadUsers();
+    // Si se cambia a remitos y los usuarios o inventario no están cargados, cargarlos
+    if (section == 'remitos' && (!_isUsersLoaded || !_isInventoryLoaded)) {
+      if (!_isUsersLoaded) _loadUsers();
+      if (!_isInventoryLoaded) _loadInventory();
     }
 
     if (_searchQuery.isNotEmpty) {
@@ -2514,8 +2689,95 @@ class _WorksScreenState extends State<WorksScreen> {
 
   /// Widget para mostrar la sección de materiales/suministros
   Widget _buildSuppliesSection(List<dynamic> supplies) {
+    final List<Widget> materialWidgets = [];
+
+    // Agregar cada material individualmente
+    for (int i = 0; i < supplies.length; i++) {
+      final material = supplies[i];
+      if (material != null) {
+        String materialText = '';
+        String? quantity;
+
+        // Extraer información del material según su estructura
+        if (material is Map<String, dynamic>) {
+          // Si tiene materialId, buscar el nombre en el inventario
+          if (material['materialId'] != null) {
+            final materialId = material['materialId'].toString();
+            materialText = _getMaterialNameById(materialId);
+          } else if (material['name'] != null) {
+            materialText = material['name'].toString();
+          } else if (material['material'] != null) {
+            materialText = material['material'].toString();
+          } else if (material['description'] != null) {
+            materialText = material['description'].toString();
+          } else {
+            materialText = material.toString();
+          }
+
+          // Extraer cantidad si está disponible
+          if (material['quantity'] != null) {
+            quantity = material['quantity'].toString();
+          }
+        } else {
+          materialText = material.toString();
+        }
+
+        materialWidgets.add(
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+            margin: const EdgeInsets.only(bottom: 8),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange.shade200),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  LucideIcons.package,
+                  size: 16,
+                  color: Colors.orange.shade600,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    materialText,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey.shade800,
+                    ),
+                  ),
+                ),
+                if (quantity != null) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      quantity,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.orange.shade700,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      }
+    }
+
     return _buildInfoSection(
-      'Materiales Utilizados',
+      'Materiales Utilizados (${supplies.length})',
       LucideIcons.package,
       Colors.orange,
       [
@@ -2525,18 +2787,15 @@ class _WorksScreenState extends State<WorksScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Se utilizaron ${supplies.length} material(es) en este trabajo.',
-                style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Consulte el sistema para ver el detalle completo de materiales.',
+                'Materiales utilizados en este trabajo:',
                 style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade500,
-                  fontStyle: FontStyle.italic,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade700,
                 ),
               ),
+              const SizedBox(height: 12),
+              ...materialWidgets,
             ],
           ),
         ),
@@ -2972,83 +3231,113 @@ class _WorksScreenState extends State<WorksScreen> {
 
   Future<void> _downloadReportPDF(Map<String, dynamic> report) async {
     try {
-      // Mostrar loading
+      // Mostrar loading no bloqueante
+      final loadingKey = GlobalKey();
+      String currentStep = 'Preparando...';
+
       showDialog(
         context: context,
         barrierDismissible: false,
         builder:
-            (context) => const AlertDialog(
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(color: Colors.orange),
-                  SizedBox(height: 16),
-                  Text('Generando PDF...'),
-                ],
-              ),
+            (context) => StatefulBuilder(
+              builder:
+                  (context, setState) => AlertDialog(
+                    key: loadingKey,
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const CircularProgressIndicator(color: Colors.orange),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Generando PDF...',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          currentStep,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Esto puede tomar unos segundos',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
             ),
       );
 
-      // Pre-descargar imágenes para evitar bloqueos en el isolate
-      List<List<int>>? imageBytes;
-      if (report['imagesUrl'] != null &&
-          (report['imagesUrl'] as List).isNotEmpty) {
-        imageBytes = await _downloadImagesForPDF(report['imagesUrl'] as List);
-      }
-
-      // Generar PDF en background para no bloquear UI
-      final pdf = await compute(_generateReportPDFStatic, {
+      // Ejecutar el proceso en un isolate separado para no bloquear la UI
+      final result = await compute(_generatePDFInBackground, {
         'report': report,
         'users': _users,
-        'imageBytes': imageBytes,
+        'imageUrls': report['imagesUrl'] ?? [],
+        'inventory': _inventory, // Pasar el inventario al isolate
       });
-      final bytes = await pdf.save();
-      final userName = _getUserNameById(report['userId']?.toString() ?? '');
-      final fileName =
-          'Remito_${userName.replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}.pdf';
 
-      if (!mounted) return;
-      Navigator.of(context).pop(); // Cerrar loading
+      // Cerrar el diálogo de loading
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
 
-      if (kIsWeb) {
-        await PDFDownloadHelper.downloadPDF(bytes: bytes, fileName: fileName);
+      if (result['success'] == true) {
+        // Mostrar éxito
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('PDF descargado: $fileName'),
+              content: Text(
+                kIsWeb
+                    ? 'PDF descargado: ${result['fileName']}'
+                    : 'PDF guardado: ${result['fileName']}',
+              ),
               backgroundColor: Colors.green,
+              duration: const Duration(seconds: 4),
+              action:
+                  kIsWeb
+                      ? null
+                      : SnackBarAction(
+                        label: 'Compartir',
+                        textColor: Colors.white,
+                        onPressed:
+                            () => PDFDownloadHelper.sharePDF(
+                              bytes: result['bytes'],
+                              fileName: result['fileName'],
+                            ),
+                      ),
             ),
           );
         }
       } else {
-        // Para móvil, usar helper para guardar
-        await PDFDownloadHelper.downloadPDF(bytes: bytes, fileName: fileName);
-
+        // Mostrar error
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('PDF guardado: $fileName'),
-              backgroundColor: Colors.green,
-              action: SnackBarAction(
-                label: 'Compartir',
-                textColor: Colors.white,
-                onPressed:
-                    () => PDFDownloadHelper.sharePDF(
-                      bytes: bytes,
-                      fileName: fileName,
-                    ),
-              ),
+              content: Text('Error generando PDF: ${result['error']}'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
             ),
           );
         }
       }
     } catch (e) {
+      // Error general - cerrar loading si está abierto
       if (mounted) {
-        Navigator.of(context).pop(); // Cerrar loading si está abierto
+        try {
+          Navigator.of(context).pop();
+        } catch (_) {}
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error generando PDF: $e'),
+            content: Text('Error inesperado: $e'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
