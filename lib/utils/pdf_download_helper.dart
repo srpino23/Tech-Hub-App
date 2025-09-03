@@ -8,10 +8,15 @@ class PDFDownloadHelper {
     required List<int> bytes,
     required String fileName,
   }) async {
-    if (kIsWeb) {
-      await downloadPDFWeb(bytes: bytes, fileName: fileName);
-    } else {
-      await downloadPDFMobile(bytes: bytes, fileName: fileName);
+    try {
+      if (kIsWeb) {
+        await downloadPDFWeb(bytes: bytes, fileName: fileName);
+      } else {
+        await downloadPDFMobile(bytes: bytes, fileName: fileName);
+      }
+    } catch (e) {
+      debugPrint('Error en downloadPDF: $e');
+      rethrow;
     }
   }
 
@@ -19,6 +24,11 @@ class PDFDownloadHelper {
     required List<int> bytes,
     required String fileName,
   }) async {
-    await sharePDFFile(bytes: bytes, fileName: fileName);
+    try {
+      await sharePDFFile(bytes: bytes, fileName: fileName);
+    } catch (e) {
+      debugPrint('Error en sharePDF: $e');
+      rethrow;
+    }
   }
 }

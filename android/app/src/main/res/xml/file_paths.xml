@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Directorio de documentos de la aplicación -->
+  <external-path name="external_files" path="Android/data/com.example.techhubmobile/files" />
+
+  <!-- Directorio de documentos públicos -->
+  <external-path name="external_docs" path="Documents" />
+
+  <!-- Directorio de descargas -->
+  <external-path name="external_downloads" path="Download" />
+
+  <!-- Directorio de archivos de la aplicación -->
+  <files-path name="files" path="." />
+
+  <!-- Directorio de caché -->
+  <cache-path name="cache" path="." />
+</paths>
