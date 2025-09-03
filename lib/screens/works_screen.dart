@@ -1,13 +1,396 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:http/http.dart' as http;
 import '../auth_manager.dart';
 import '../services/techhub_api_client.dart';
 import '../services/api_response.dart';
+import '../utils/pdf_download_helper.dart';
 import 'create_report_screen.dart';
+
+// Static helper function for PDF generation
+String _extractUserNameStatic(Map<String, dynamic> user) {
+  final combinations = [
+    ['fullName'],
+    ['firstName', 'lastName'],
+    ['name', 'surname'],
+    ['nombre', 'apellido'],
+    ['first_name', 'last_name'],
+  ];
+
+  for (final combo in combinations) {
+    final parts = combo
+        .map((field) => user[field]?.toString().trim() ?? '')
+        .where((part) => part.isNotEmpty);
+    if (parts.length == combo.length) {
+      return parts.join(' ');
+    }
+  }
+
+  final name = user['name']?.toString().trim();
+  return name?.isNotEmpty == true ? name! : 'Desconocido';
+}
+
+Future<pw.Document> _generateReportPDFStatic(Map<String, dynamic> data) async {
+  final report = data['report'] as Map<String, dynamic>;
+  final users = data['users'] as List<Map<String, dynamic>>;
+  final imageBytes = data['imageBytes'] as List<List<int>>?;
+
+  final pdf = pw.Document();
+
+  // Helper function to get user name
+  String getUserName(String? userId) {
+    if (userId == null) return 'Desconocido';
+    final user = users.firstWhere(
+      (user) =>
+          user['userId']?.toString() == userId ||
+          user['_id']?.toString() == userId,
+      orElse: () => <String, dynamic>{},
+    );
+
+    return user.isNotEmpty ? _extractUserNameStatic(user) : 'Desconocido';
+  }
+
+  // Preparar widgets para el PDF
+  final List<pw.Widget> pdfWidgets = [
+    // Header del documento
+    _buildPDFHeader(report, getUserName),
+    pw.SizedBox(height: 20),
+
+    // Información general
+    _buildPDFInfoSection('Información General', [
+      _buildPDFInfoRow(
+        'Usuario',
+        getUserName(report['userId']?.toString() ?? ''),
+      ),
+      _buildPDFInfoRow(
+        'Estado',
+        _translateStatus(report['status']?.toString()),
+      ),
+      _buildPDFInfoRow(
+        'Tipo de Trabajo',
+        report['typeOfWork']?.toString() ?? 'N/A',
+      ),
+      _buildPDFInfoRow('Fecha de Inicio', _formatTime(report['startTime'])),
+      _buildPDFInfoRow('Fecha de Fin', _formatTime(report['endTime'])),
+      _buildPDFInfoRow(
+        'Conectividad',
+        report['connectivity']?.toString() ?? 'N/A',
+      ),
+    ]),
+    pw.SizedBox(height: 20),
+  ];
+
+  // Ubicación
+  if (report['location'] != null) {
+    pdfWidgets.addAll([
+      _buildPDFInfoSection('Ubicación', [
+        _buildPDFInfoRow(
+          'Coordenadas',
+          _getLocationText(report['location']) ?? 'N/A',
+        ),
+      ]),
+      pw.SizedBox(height: 20),
+    ]);
+  }
+
+  // Descripción del trabajo
+  if (report['toDo'] != null && report['toDo'].toString().isNotEmpty) {
+    pdfWidgets.addAll([
+      _buildPDFInfoSection('Trabajo Realizado', [
+        pw.Paragraph(
+          text: report['toDo'].toString(),
+          style: const pw.TextStyle(fontSize: 12),
+        ),
+      ]),
+      pw.SizedBox(height: 20),
+    ]);
+  }
+
+  // Información técnica
+  if (report['connectivity'] == 'Fibra óptica' ||
+      report['connectivity'] == 'Enlace') {
+    pdfWidgets.addAll([
+      _buildPDFTechnicalSection(report),
+      pw.SizedBox(height: 20),
+    ]);
+  }
+
+  // Materiales utilizados
+  if (report['supplies'] != null && (report['supplies'] as List).isNotEmpty) {
+    pdfWidgets.addAll([
+      _buildPDFMaterialsSimpleSection(report['supplies']),
+      pw.SizedBox(height: 20),
+    ]);
+  }
+
+  // Fotos - usar imágenes pre-descargadas
+  if (imageBytes != null && imageBytes.isNotEmpty) {
+    pdfWidgets.add(_buildPDFPhotosSection(imageBytes));
+  }
+
+  // Build PDF content
+  pdf.addPage(
+    pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.all(32),
+      build: (pw.Context context) => pdfWidgets,
+    ),
+  );
+
+  return pdf;
+}
+
+// Helper functions for PDF sections
+pw.Widget _buildPDFHeader(
+  Map<String, dynamic> report,
+  String Function(String?) getUserName,
+) {
+  return pw.Header(
+    level: 0,
+    child: pw.Container(
+      padding: const pw.EdgeInsets.all(20),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.orange,
+        borderRadius: pw.BorderRadius.circular(8),
+      ),
+      child: pw.Row(
+        children: [
+          pw.Expanded(
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  'REMITO DE TRABAJO',
+                  style: pw.TextStyle(
+                    fontSize: 24,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.white,
+                  ),
+                ),
+                pw.SizedBox(height: 5),
+                pw.Text(
+                  'ID: ${report['_id']?.toString() ?? 'N/A'}',
+                  style: pw.TextStyle(fontSize: 12, color: PdfColors.white),
+                ),
+              ],
+            ),
+          ),
+          pw.Text(
+            DateTime.now().toString().split('.')[0],
+            style: pw.TextStyle(fontSize: 10, color: PdfColors.white),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+pw.Widget _buildPDFTechnicalSection(Map<String, dynamic> report) {
+  List<pw.Widget> technicalInfo = [];
+
+  if (report['connectivity'] == 'Fibra óptica') {
+    if (report['db'] != null) {
+      technicalInfo.add(_buildPDFInfoRow('DB', report['db'].toString()));
+    }
+    if (report['buffers'] != null) {
+      technicalInfo.add(
+        _buildPDFInfoRow('Buffers', report['buffers'].toString()),
+      );
+    }
+    if (report['bufferColor'] != null) {
+      technicalInfo.add(
+        _buildPDFInfoRow('Color Buffer', report['bufferColor'].toString()),
+      );
+    }
+    if (report['hairColor'] != null) {
+      technicalInfo.add(
+        _buildPDFInfoRow('Color Pelo', report['hairColor'].toString()),
+      );
+    }
+  } else if (report['connectivity'] == 'Enlace') {
+    if (report['ap'] != null) {
+      technicalInfo.add(_buildPDFInfoRow('AP', report['ap'].toString()));
+    }
+    if (report['st'] != null) {
+      technicalInfo.add(_buildPDFInfoRow('ST', report['st'].toString()));
+    }
+    if (report['ccq'] != null) {
+      technicalInfo.add(_buildPDFInfoRow('CCQ', report['ccq'].toString()));
+    }
+  }
+
+  if (technicalInfo.isEmpty) {
+    return pw.SizedBox();
+  }
+
+  return _buildPDFInfoSection('Información Técnica', technicalInfo);
+}
+
+pw.Widget _buildPDFMaterialsSimpleSection(List supplies) {
+  return _buildPDFInfoSection('Materiales Utilizados', [
+    pw.Text(
+      'Se utilizaron ${supplies.length} material(es) en este trabajo.',
+      style: const pw.TextStyle(fontSize: 12),
+    ),
+    pw.SizedBox(height: 8),
+    pw.Text(
+      'Nota: El detalle completo de materiales está disponible en el sistema digital.',
+      style: pw.TextStyle(
+        fontSize: 10,
+        fontStyle: pw.FontStyle.italic,
+        color: PdfColors.grey600,
+      ),
+    ),
+  ]);
+}
+
+pw.Widget _buildPDFPhotosSection(List<List<int>> imageBytes) {
+  final List<pw.Widget> imageWidgets = [];
+
+  // Usar las imágenes pre-descargadas
+  for (int i = 0; i < imageBytes.length; i++) {
+    try {
+      final image = pw.MemoryImage(Uint8List.fromList(imageBytes[i]));
+      imageWidgets.add(
+        pw.Container(
+          width: 120,
+          height: 120,
+          margin: const pw.EdgeInsets.all(4),
+          decoration: pw.BoxDecoration(
+            border: pw.Border.all(color: PdfColors.grey300),
+            borderRadius: pw.BorderRadius.circular(8),
+          ),
+          child: pw.Image(image, fit: pw.BoxFit.cover),
+        ),
+      );
+    } catch (e) {
+      // Si falla cargar la imagen, continuar con la siguiente
+      continue;
+    }
+  }
+
+  return _buildPDFInfoSection('Imágenes del Trabajo', [
+    if (imageWidgets.isNotEmpty) ...[
+      pw.Wrap(spacing: 8, runSpacing: 8, children: imageWidgets),
+    ] else ...[
+      pw.Text(
+        'Las imágenes no pudieron cargarse.',
+        style: pw.TextStyle(
+          fontSize: 10,
+          fontStyle: pw.FontStyle.italic,
+          color: PdfColors.grey600,
+        ),
+      ),
+    ],
+  ]);
+}
+
+String? _getLocationText(dynamic location) {
+  if (location == null) return null;
+
+  try {
+    // If location is a string (coordinates)
+    if (location is String) {
+      return location;
+    }
+
+    // If location is a map with address field
+    if (location is Map<String, dynamic>) {
+      if (location.containsKey('address')) {
+        return location['address']?.toString();
+      }
+      // If it has lat/lng coordinates, format them
+      if (location.containsKey('lat') && location.containsKey('lng')) {
+        return '${location['lat']}, ${location['lng']}';
+      }
+      // Return the string representation
+      return location.toString();
+    }
+
+    return location.toString();
+  } catch (e) {
+    return location.toString();
+  }
+}
+
+pw.Widget _buildPDFInfoSection(String title, List<pw.Widget> children) {
+  return pw.Column(
+    crossAxisAlignment: pw.CrossAxisAlignment.start,
+    children: [
+      pw.Text(
+        title,
+        style: pw.TextStyle(
+          fontSize: 16,
+          fontWeight: pw.FontWeight.bold,
+          color: PdfColors.orange,
+        ),
+      ),
+      pw.SizedBox(height: 10),
+      pw.Container(
+        padding: const pw.EdgeInsets.all(12),
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: PdfColors.grey300),
+          borderRadius: pw.BorderRadius.circular(8),
+        ),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: children,
+        ),
+      ),
+    ],
+  );
+}
+
+pw.Widget _buildPDFInfoRow(String label, String value) {
+  return pw.Padding(
+    padding: const pw.EdgeInsets.symmetric(vertical: 3),
+    child: pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Container(
+          width: 120,
+          child: pw.Text(
+            '$label:',
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11),
+          ),
+        ),
+        pw.Expanded(
+          child: pw.Text(value, style: const pw.TextStyle(fontSize: 11)),
+        ),
+      ],
+    ),
+  );
+}
+
+String _translateStatus(String? status) {
+  switch (status) {
+    case 'pending':
+      return 'Pendiente';
+    case 'in_progress':
+      return 'En Progreso';
+    case 'completed':
+      return 'Completado';
+    default:
+      return status ?? 'N/A';
+  }
+}
+
+String _formatTime(dynamic time) {
+  if (time == null) return 'N/A';
+  try {
+    final date = DateTime.parse(time.toString());
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+  } catch (e) {
+    return time.toString();
+  }
+}
 
 class WorksScreen extends StatefulWidget {
   final AuthManager authManager;
@@ -29,17 +412,9 @@ class _WorksScreenState extends State<WorksScreen> {
   String _selectedStatus = 'in_progress'; // pending, in_progress, completed
   String _selectedSection = 'remitos'; // tareas, remitos
 
-  // Cache para materiales para evitar múltiples llamadas
-  final Map<String, Map<String, dynamic>?> _materialsCache = {};
-
   // Cache para usuarios para evitar múltiples llamadas
   List<Map<String, dynamic>> _users = [];
   bool _isUsersLoaded = false;
-
-  // Cache para inventarios completos (solo se cargan una vez)
-  List<Map<String, dynamic>>? _mainInventoryCache;
-  List<Map<String, dynamic>>? _recoveredInventoryCache;
-  bool _inventoriesLoaded = false;
 
   // Loading state
   int _tasksTotal = 0;
@@ -447,17 +822,54 @@ class _WorksScreenState extends State<WorksScreen> {
     }
 
     final user = _users.firstWhere(
-      (user) => user['_id']?.toString() == userId,
+      (user) =>
+          user['_id']?.toString() == userId ||
+          user['userId']?.toString() == userId,
       orElse: () => <String, dynamic>{},
     );
 
-    if (user.isNotEmpty) {
-      final name = user['name']?.toString() ?? '';
-      final surname = user['surname']?.toString() ?? '';
-      return '$name $surname'.trim();
+    return user.isNotEmpty ? _extractUserName(user) : 'Usuario desconocido';
+  }
+
+  String _extractUserName(Map<String, dynamic> user) {
+    // Combinaciones comunes de campos
+    final combinations = [
+      ['fullName'],
+      ['firstName', 'lastName'],
+      ['name', 'surname'],
+      ['nombre', 'apellido'],
+      ['first_name', 'last_name'],
+    ];
+
+    for (final combo in combinations) {
+      final parts = combo
+          .map((field) => user[field]?.toString().trim() ?? '')
+          .where((part) => part.isNotEmpty);
+      if (parts.length == combo.length) {
+        return parts.join(' ');
+      }
     }
 
-    return 'Usuario desconocido';
+    // Fallback a name simple
+    final name = user['name']?.toString().trim();
+    return name?.isNotEmpty == true ? name! : 'Usuario desconocido';
+  }
+
+  Future<List<List<int>>> _downloadImagesForPDF(List imageUrls) async {
+    final List<List<int>> imageBytes = [];
+
+    for (int i = 0; i < imageUrls.length && i < 4; i++) {
+      try {
+        final response = await http.get(Uri.parse(imageUrls[i].toString()));
+        if (response.statusCode == 200) {
+          imageBytes.add(response.bodyBytes);
+        }
+      } catch (e) {
+        debugPrint('Error downloading image: $e');
+      }
+    }
+
+    return imageBytes;
   }
 
   Future<void> _searchData() async {
@@ -1607,65 +2019,102 @@ class _WorksScreenState extends State<WorksScreen> {
           topRight: Radius.circular(20),
         ),
       ),
-      child: Row(
+      child: Column(
         children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              _selectedSection == 'remitos'
-                  ? LucideIcons.fileText
-                  : LucideIcons.checkSquare,
-              color: Colors.white,
-              size: isWideScreen ? 28 : 24,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
                   _selectedSection == 'remitos'
-                      ? 'Detalles del Remito'
-                      : 'Detalles de la Tarea',
-                  style: TextStyle(
-                    fontSize: isWideScreen ? 16 : 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white.withValues(alpha: 0.9),
-                  ),
+                      ? LucideIcons.fileText
+                      : LucideIcons.checkSquare,
+                  color: Colors.white,
+                  size: isWideScreen ? 28 : 24,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  _getTaskTitle(taskToShow),
-                  style: TextStyle(
-                    fontSize: isWideScreen ? 22 : 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _selectedSection == 'remitos'
+                          ? 'Detalles del Remito'
+                          : 'Detalles de la Tarea',
+                      style: TextStyle(
+                        fontSize: isWideScreen ? 16 : 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withValues(alpha: 0.9),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _getTaskTitle(taskToShow),
+                      style: TextStyle(
+                        fontSize: isWideScreen ? 22 : 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 16),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  iconSize: isWideScreen ? 24 : 20,
+                  padding: const EdgeInsets.all(12),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 16),
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(12),
+
+          // Botones de descarga e impresión para remitos completados
+          if (_selectedSection == 'remitos' &&
+              taskToShow['status'] == 'completed') ...[
+            const SizedBox(height: 16),
+            _buildActionButton(
+              icon: LucideIcons.download,
+              label: 'Descargar PDF',
+              onPressed: () => _downloadReportPDF(taskToShow),
             ),
-            child: IconButton(
-              onPressed: () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.close, color: Colors.white),
-              iconSize: isWideScreen ? 24 : 20,
-              padding: const EdgeInsets.all(12),
-            ),
-          ),
+          ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+  }) {
+    return ElevatedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 18),
+      label: Text(
+        label,
+        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+      ),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.orange.shade600,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        elevation: 0,
       ),
     );
   }
@@ -2065,177 +2514,31 @@ class _WorksScreenState extends State<WorksScreen> {
 
   /// Widget para mostrar la sección de materiales/suministros
   Widget _buildSuppliesSection(List<dynamic> supplies) {
-    final Future<List<Map<String, dynamic>>> allMaterialsFuture =
-        _loadAllSuppliesMaterials(supplies);
-
     return _buildInfoSection(
       'Materiales Utilizados',
       LucideIcons.package,
       Colors.orange,
       [
-        FutureBuilder<List<Map<String, dynamic>>>(
-          future: allMaterialsFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: CircularProgressIndicator(
-                    color: Colors.orange,
-                    strokeWidth: 2,
-                  ),
+        Container(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Se utilizaron ${supplies.length} material(es) en este trabajo.',
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Consulte el sistema para ver el detalle completo de materiales.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade500,
+                  fontStyle: FontStyle.italic,
                 ),
-              );
-            }
-
-            if (snapshot.hasError) {
-              return Container(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  'Error al cargar materiales',
-                  style: TextStyle(color: Colors.red.shade600, fontSize: 13),
-                ),
-              );
-            }
-
-            if (!snapshot.hasData || snapshot.data!.isEmpty) {
-              return Container(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  'No se encontraron materiales',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-                ),
-              );
-            }
-
-            final materialsData = snapshot.data!;
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children:
-                  materialsData.map((materialData) {
-                    final materialName =
-                        materialData['name'] ?? 'Material desconocido';
-                    final quantity = materialData['quantity'] ?? '0';
-                    final isRecovered = materialData['isRecovered'] ?? false;
-                    final status = materialData['status'] ?? 'nuevo';
-
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color:
-                            isRecovered
-                                ? Colors.green.shade50
-                                : Colors.orange.shade50,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color:
-                              isRecovered
-                                  ? Colors.green.shade200
-                                  : Colors.orange.shade200,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color:
-                                  isRecovered
-                                      ? Colors.green.shade100
-                                      : Colors.orange.shade100,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Icon(
-                              isRecovered
-                                  ? LucideIcons.recycle
-                                  : LucideIcons.box,
-                              size: 16,
-                              color:
-                                  isRecovered
-                                      ? Colors.green.shade600
-                                      : Colors.orange.shade600,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  materialName,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.grey.shade800,
-                                  ),
-                                ),
-                                if (isRecovered && status != 'nuevo') ...[
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'Material $status',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.green.shade600,
-                                      fontStyle: FontStyle.italic,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (isRecovered)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  margin: const EdgeInsets.only(right: 8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green.shade100,
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    'Reutilizado',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.green.shade700,
-                                    ),
-                                  ),
-                                ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color:
-                                      isRecovered
-                                          ? Colors.green.shade600
-                                          : Colors.orange.shade600,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  'x$quantity',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-            );
-          },
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -2469,115 +2772,6 @@ class _WorksScreenState extends State<WorksScreen> {
     );
   }
 
-  /// Carga los inventarios una sola vez para optimizar las búsquedas
-  Future<void> _loadInventories() async {
-    if (_inventoriesLoaded) return;
-
-    try {
-      // Cargar ambos inventarios en paralelo
-      final results = await Future.wait([
-        TechHubApiClient.getInventory(),
-        TechHubApiClient.getRecoveredInventory(),
-      ]);
-
-      final mainResponse = results[0];
-      final recoveredResponse = results[1];
-
-      if (mainResponse.isSuccess && mainResponse.data != null) {
-        _mainInventoryCache = List<Map<String, dynamic>>.from(
-          mainResponse.data!,
-        );
-      }
-
-      if (recoveredResponse.isSuccess && recoveredResponse.data != null) {
-        _recoveredInventoryCache = List<Map<String, dynamic>>.from(
-          recoveredResponse.data!,
-        );
-      }
-
-      _inventoriesLoaded = true;
-    } catch (e) {
-      // Error loading inventories, will retry next time
-    }
-  }
-
-  /// Carga todos los detalles de materiales de suministros de una vez
-  Future<List<Map<String, dynamic>>> _loadAllSuppliesMaterials(
-    List<dynamic> supplies,
-  ) async {
-    // Cargar inventarios si no están cargados
-    await _loadInventories();
-
-    final List<Map<String, dynamic>> materialsData = [];
-
-    for (var supply in supplies) {
-      final materialId = supply['materialId']?.toString() ?? '';
-      final quantity = supply['quantity']?.toString() ?? '0';
-
-      if (materialId.isEmpty) continue;
-
-      // Buscar en cache primero
-      if (_materialsCache.containsKey(materialId)) {
-        final cachedMaterial = _materialsCache[materialId];
-        if (cachedMaterial != null) {
-          materialsData.add({...cachedMaterial, 'quantity': quantity});
-        }
-        continue;
-      }
-
-      // Buscar en inventario recuperado
-      Map<String, dynamic>? materialDetails;
-      if (_recoveredInventoryCache != null) {
-        for (var recoveredMaterial in _recoveredInventoryCache!) {
-          if (recoveredMaterial['_id']?.toString() == materialId) {
-            materialDetails = {
-              'name': recoveredMaterial['name']?.toString() ?? 'Sin nombre',
-              'isRecovered': true,
-              'status': 'recuperado',
-              'originalMaterialId':
-                  recoveredMaterial['originalMaterialId']?.toString(),
-              'quantity': quantity,
-            };
-            break;
-          }
-        }
-      }
-
-      // Si no se encontró en recuperado, buscar en inventario principal
-      if (materialDetails == null && _mainInventoryCache != null) {
-        for (var mainMaterial in _mainInventoryCache!) {
-          if (mainMaterial['_id']?.toString() == materialId) {
-            materialDetails = {
-              'name': mainMaterial['name']?.toString() ?? 'Sin nombre',
-              'isRecovered': false,
-              'status': 'nuevo',
-              'quantity': quantity,
-            };
-            break;
-          }
-        }
-      }
-
-      // Cachear y agregar resultado
-      if (materialDetails != null) {
-        _materialsCache[materialId] = Map<String, dynamic>.from(materialDetails)
-          ..remove('quantity');
-        materialsData.add(materialDetails);
-      } else {
-        // Material no encontrado
-        _materialsCache[materialId] = null;
-        materialsData.add({
-          'name': 'Material no encontrado (ID: $materialId)',
-          'isRecovered': false,
-          'status': 'desconocido',
-          'quantity': quantity,
-        });
-      }
-    }
-
-    return materialsData;
-  }
-
   void _navigateToEditReport(Map<String, dynamic> report) {
     final reportId = report['_id']?.toString();
     if (reportId == null) {
@@ -2774,5 +2968,90 @@ class _WorksScreenState extends State<WorksScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
+  }
+
+  Future<void> _downloadReportPDF(Map<String, dynamic> report) async {
+    try {
+      // Mostrar loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder:
+            (context) => const AlertDialog(
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: Colors.orange),
+                  SizedBox(height: 16),
+                  Text('Generando PDF...'),
+                ],
+              ),
+            ),
+      );
+
+      // Pre-descargar imágenes para evitar bloqueos en el isolate
+      List<List<int>>? imageBytes;
+      if (report['imagesUrl'] != null &&
+          (report['imagesUrl'] as List).isNotEmpty) {
+        imageBytes = await _downloadImagesForPDF(report['imagesUrl'] as List);
+      }
+
+      // Generar PDF en background para no bloquear UI
+      final pdf = await compute(_generateReportPDFStatic, {
+        'report': report,
+        'users': _users,
+        'imageBytes': imageBytes,
+      });
+      final bytes = await pdf.save();
+      final userName = _getUserNameById(report['userId']?.toString() ?? '');
+      final fileName =
+          'Remito_${userName.replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+
+      if (!mounted) return;
+      Navigator.of(context).pop(); // Cerrar loading
+
+      if (kIsWeb) {
+        await PDFDownloadHelper.downloadPDF(bytes: bytes, fileName: fileName);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('PDF descargado: $fileName'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        // Para móvil, usar helper para guardar
+        await PDFDownloadHelper.downloadPDF(bytes: bytes, fileName: fileName);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('PDF guardado: $fileName'),
+              backgroundColor: Colors.green,
+              action: SnackBarAction(
+                label: 'Compartir',
+                textColor: Colors.white,
+                onPressed:
+                    () => PDFDownloadHelper.sharePDF(
+                      bytes: bytes,
+                      fileName: fileName,
+                    ),
+              ),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context).pop(); // Cerrar loading si está abierto
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error generando PDF: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }
