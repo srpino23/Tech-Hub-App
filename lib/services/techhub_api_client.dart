@@ -8,6 +8,7 @@ class TechHubApiClient {
   static const String baseUrl =
       'https://74280601d366.sn.mynetname.net/test/api';
   static const Duration timeoutDuration = Duration(seconds: 30);
+  static const Duration longTimeoutDuration = Duration(minutes: 5); // Para operaciones con archivos
 
   static const Map<String, String> _jsonHeaders = {
     'Content-Type': 'application/json',
@@ -337,72 +338,75 @@ class TechHubApiClient {
     List<dynamic>? images,
   }) async {
     try {
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$baseUrl/report/finishReport'),
-      );
+      return await _retryOperation(() async {
+        var request = http.MultipartRequest(
+          'POST',
+          Uri.parse('$baseUrl/report/finishReport'),
+        );
 
-      // Add form fields
-      request.fields['reportId'] = reportId;
-      request.fields['status'] = status;
-      request.fields['teamId'] = teamId;
+        // Add form fields
+        request.fields['reportId'] = reportId;
+        request.fields['status'] = status;
+        request.fields['teamId'] = teamId;
 
-      if (supplies != null) request.fields['supplies'] = supplies;
-      if (toDo != null) request.fields['toDo'] = toDo;
-      if (typeOfWork != null) request.fields['typeOfWork'] = typeOfWork;
-      if (endTime != null) request.fields['endTime'] = endTime;
-      if (location != null) request.fields['location'] = location;
-      if (connectivity != null) request.fields['connectivity'] = connectivity;
-      if (db != null) request.fields['db'] = db;
-      if (buffers != null) request.fields['buffers'] = buffers;
-      if (bufferColor != null) request.fields['bufferColor'] = bufferColor;
-      if (hairColor != null) request.fields['hairColor'] = hairColor;
-      if (ap != null) request.fields['ap'] = ap;
-      if (st != null) request.fields['st'] = st;
-      if (ccq != null) request.fields['ccq'] = ccq;
+        if (supplies != null) request.fields['supplies'] = supplies;
+        if (toDo != null) request.fields['toDo'] = toDo;
+        if (typeOfWork != null) request.fields['typeOfWork'] = typeOfWork;
+        if (endTime != null) request.fields['endTime'] = endTime;
+        if (location != null) request.fields['location'] = location;
+        if (connectivity != null) request.fields['connectivity'] = connectivity;
+        if (db != null) request.fields['db'] = db;
+        if (buffers != null) request.fields['buffers'] = buffers;
+        if (bufferColor != null) request.fields['bufferColor'] = bufferColor;
+        if (hairColor != null) request.fields['hairColor'] = hairColor;
+        if (ap != null) request.fields['ap'] = ap;
+        if (st != null) request.fields['st'] = st;
+        if (ccq != null) request.fields['ccq'] = ccq;
 
-      // Add images if provided
-      if (images != null) {
-        for (int i = 0; i < images.length; i++) {
-          final image = images[i];
-          if (image is File) {
-            // Handle File objects (mobile/desktop)
-            final file = await http.MultipartFile.fromPath(
-              'images',
-              image.path,
-            );
-            request.files.add(file);
-          } else if (image.runtimeType.toString().contains('WebFileWrapper')) {
-            // Handle legacy web files
-            final bytes = await (image as dynamic).readAsBytes() as List<int>;
-            final file = http.MultipartFile.fromBytes(
-              'images',
-              bytes,
-              filename: (image as dynamic).fileName as String,
-            );
-            request.files.add(file);
-          } else if (image is PlatformFile) {
-            // Handle PlatformFile (new universal approach)
-            final platformFile = image;
-            if (platformFile.bytes != null && platformFile.bytes!.isNotEmpty) {
-              final file = http.MultipartFile.fromBytes(
+        // Add images if provided
+        if (images != null) {
+          for (int i = 0; i < images.length; i++) {
+            final image = images[i];
+            if (image is File) {
+              // Handle File objects (mobile/desktop)
+              final file = await http.MultipartFile.fromPath(
                 'images',
-                platformFile.bytes!,
-                filename: platformFile.name,
+                image.path,
               );
               request.files.add(file);
+            } else if (image.runtimeType.toString().contains('WebFileWrapper')) {
+              // Handle legacy web files
+              final bytes = await (image as dynamic).readAsBytes() as List<int>;
+              final file = http.MultipartFile.fromBytes(
+                'images',
+                bytes,
+                filename: (image as dynamic).fileName as String,
+              );
+              request.files.add(file);
+            } else if (image is PlatformFile) {
+              // Handle PlatformFile (new universal approach)
+              final platformFile = image;
+              if (platformFile.bytes != null && platformFile.bytes!.isNotEmpty) {
+                final file = http.MultipartFile.fromBytes(
+                  'images',
+                  platformFile.bytes!,
+                  filename: platformFile.name,
+                );
+                request.files.add(file);
+              }
             }
           }
         }
-      }
 
-      final streamedResponse = await request.send().timeout(timeoutDuration);
-      final response = await http.Response.fromStream(streamedResponse);
+        // Usar timeout más largo para operaciones con archivos
+        final streamedResponse = await request.send().timeout(longTimeoutDuration);
+        final response = await http.Response.fromStream(streamedResponse);
 
-      return _handleResponse<ReportResponse>(
-        response,
-        (data) => ReportResponse.fromJson(data),
-      );
+        return _handleResponse<ReportResponse>(
+          response,
+          (data) => ReportResponse.fromJson(data),
+        );
+      }, maxRetries: 2, delay: const Duration(seconds: 3));
     } catch (e) {
       return ApiResponse.error(_getErrorMessage(e));
     }
@@ -457,5 +461,38 @@ class TechHubApiClient {
     } else {
       return 'Unexpected error: ${error.toString()}';
     }
+  }
+
+  // Función auxiliar para retry automático
+  static Future<T> _retryOperation<T>(
+    Future<T> Function() operation, {
+    int maxRetries = 3,
+    Duration delay = const Duration(seconds: 2),
+  }) async {
+    int attempts = 0;
+    
+    while (attempts < maxRetries) {
+      try {
+        return await operation();
+      } catch (e) {
+        attempts++;
+        if (attempts >= maxRetries) {
+          rethrow;
+        }
+        
+        // Solo hacer retry en casos específicos
+        if (e.toString().contains('TimeoutException') || 
+            e.toString().contains('SocketException') ||
+            e.toString().contains('Connection reset')) {
+          await Future.delayed(delay);
+          continue;
+        }
+        
+        // Para otros errores, no hacer retry
+        rethrow;
+      }
+    }
+    
+    throw Exception('Max retries exceeded');
   }
 }

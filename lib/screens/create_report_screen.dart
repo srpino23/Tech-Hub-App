@@ -7,6 +7,7 @@ import '../services/location_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image/image.dart' as img;
 import 'dart:convert';
 import 'dart:async';
 
@@ -14,6 +15,7 @@ import 'dart:async';
 class UniversalFile {
   final PlatformFile platformFile;
   final String? name;
+  Uint8List? _compressedBytes;
 
   UniversalFile(this.platformFile, {this.name});
 
@@ -22,11 +24,14 @@ class UniversalFile {
 
   String get displayName => name ?? platformFile.name;
 
-  // Getter para obtener los bytes
-  Uint8List get bytes => platformFile.bytes ?? Uint8List(0);
+  // Getter para obtener los bytes (comprimidos si es una imagen)
+  Uint8List get bytes => _compressedBytes ?? platformFile.bytes ?? Uint8List(0);
 
-  // Getter para obtener el tamaño
+  // Getter para obtener el tamaño original
   int get size => platformFile.size;
+
+  // Getter para obtener el tamaño comprimido
+  int get compressedSize => _compressedBytes?.length ?? platformFile.size;
 
   // Getter para obtener la extensión
   String get extension => platformFile.extension ?? '';
@@ -35,6 +40,49 @@ class UniversalFile {
   bool get isImage {
     final imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
     return imageExtensions.contains(extension.toLowerCase());
+  }
+
+  // Comprimir imagen si es necesario
+  Future<void> compressImageIfNeeded({int quality = 85, int? maxWidth}) async {
+    if (!isImage || platformFile.bytes == null) return;
+
+    try {
+      final originalBytes = platformFile.bytes!;
+
+      // Solo comprimir si la imagen es mayor a 500KB
+      if (originalBytes.length < 500 * 1024) return;
+
+      final image = img.decodeImage(originalBytes);
+      if (image == null) return;
+
+      // Redimensionar si es muy grande
+      img.Image resizedImage = image;
+      if (maxWidth != null && image.width > maxWidth) {
+        resizedImage = img.copyResize(image, width: maxWidth);
+      } else if (image.width > 1920) {
+        resizedImage = img.copyResize(image, width: 1920);
+      }
+
+      // Comprimir según el formato
+      late Uint8List compressedBytes;
+      if (extension.toLowerCase() == 'png') {
+        compressedBytes = Uint8List.fromList(img.encodePng(resizedImage));
+      } else {
+        compressedBytes = Uint8List.fromList(
+          img.encodeJpg(resizedImage, quality: quality),
+        );
+      }
+
+      // Solo usar la versión comprimida si es significativamente más pequeña
+      if (compressedBytes.length < originalBytes.length * 0.8) {
+        _compressedBytes = compressedBytes;
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error comprimiendo imagen: $e');
+      }
+      // En caso de error, usar la imagen original
+    }
   }
 
   Widget buildImageWidget({required double width, required double height}) {
@@ -351,17 +399,17 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
 
   List<Map<String, dynamic>> get _selectedMaterialsList {
     final List<Map<String, dynamic>> validMaterials = [];
-    
+
     for (var entry in _materialQuantities.entries) {
       final materialId = entry.key;
       final quantity = entry.value;
-      
+
       // Buscar el material en la lista disponible
       final material = _availableMaterials.firstWhere(
         (m) => m['materialId'].toString() == materialId,
         orElse: () => <String, dynamic>{},
       );
-      
+
       // Obtener el nombre del material de manera segura
       String materialName;
       if (material.isNotEmpty && material['materialName'] != null) {
@@ -370,7 +418,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         // Fallback: usar el ID del material si no hay nombre
         materialName = 'Material ID: $materialId';
       }
-      
+
       // Solo agregar materiales con nombre válido
       if (materialName.isNotEmpty && quantity > 0) {
         validMaterials.add({
@@ -380,7 +428,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         });
       }
     }
-    
+
     return validMaterials;
   }
 
@@ -543,6 +591,9 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
 
         final universalFile = UniversalFile(platformFile);
         if (universalFile.isValid) {
+          // Comprimir imagen automáticamente
+          await universalFile.compressImageIfNeeded();
+
           setState(() {
             _selectedImages.add(universalFile);
           });
@@ -594,7 +645,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     }
   }
 
-  void _processSelectedFiles(List<PlatformFile> files) {
+  void _processSelectedFiles(List<PlatformFile> files) async {
     // Verificar que no excedamos el límite de 4 archivos
     final remainingSlots = 4 - _selectedImages.length;
     final filesToAdd = files.take(remainingSlots).toList();
@@ -603,6 +654,11 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       if (platformFile.bytes != null && platformFile.bytes!.isNotEmpty) {
         final universalFile = UniversalFile(platformFile);
         if (universalFile.isValid) {
+          // Comprimir imagen si es necesario
+          if (universalFile.isImage) {
+            await universalFile.compressImageIfNeeded();
+          }
+
           setState(() {
             _selectedImages.add(universalFile);
           });
@@ -688,6 +744,34 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       _isSubmitting = true;
     });
 
+    // Mostrar mensaje de progreso inicial
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                _selectedImages.isNotEmpty
+                    ? 'Procesando ${_selectedImages.length} archivo(s)...'
+                    : 'Finalizando remito...',
+              ),
+            ],
+          ),
+          backgroundColor: Colors.blue[600],
+          duration: Duration(seconds: 10),
+        ),
+      );
+    }
+
     try {
       final teamId = widget.authManager.teamId;
 
@@ -697,23 +781,26 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
 
       // Obtener materiales válidos
       final materialsToSend = _selectedMaterialsList;
-      
+
       // Validación adicional: verificar que todos los materiales tengan nombre
-      final validatedMaterials = materialsToSend.where((material) {
-        final hasValidName = material['materialName'] != null && 
-                           material['materialName'].toString().isNotEmpty;
-        final hasValidQuantity = material['quantity'] != null && 
-                               (material['quantity'] as num) > 0;
-        return hasValidName && hasValidQuantity;
-      }).toList();
-      
+      final validatedMaterials =
+          materialsToSend.where((material) {
+            final hasValidName =
+                material['materialName'] != null &&
+                material['materialName'].toString().isNotEmpty;
+            final hasValidQuantity =
+                material['quantity'] != null &&
+                (material['quantity'] as num) > 0;
+            return hasValidName && hasValidQuantity;
+          }).toList();
+
       // Debug: Imprimir materiales que se van a enviar
       if (kDebugMode) {
         print('Materiales originales: ${materialsToSend.length}');
         print('Materiales validados: ${validatedMaterials.length}');
         print('Materiales a enviar: ${json.encode(validatedMaterials)}');
       }
-      
+
       // Finalizar el reporte con todos los datos usando la nueva API
       final finishResponse = await TechHubApiClient.finishReport(
         reportId: _currentReportId!,
@@ -782,7 +869,22 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       }
     } catch (e) {
       if (mounted) {
-        _showError('Error finalizando remito: $e');
+        // Limpiar cualquier SnackBar de progreso
+        ScaffoldMessenger.of(context).clearSnackBars();
+
+        String errorMessage = 'Error finalizando remito: $e';
+
+        // Proporcionar mensajes más específicos según el tipo de error
+        if (e.toString().contains('timeout')) {
+          errorMessage =
+              'Conexión lenta detectada. El remito puede tardar más de lo normal en enviarse. Verifique su conexión a internet.';
+        } else if (e.toString().contains('SocketException') ||
+            e.toString().contains('Network')) {
+          errorMessage =
+              'Error de conexión. Verifique su conexión a internet y vuelva a intentarlo.';
+        }
+
+        _showError(errorMessage);
       }
     } finally {
       if (mounted) {
@@ -950,13 +1052,17 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         teamId: teamId,
         supplies:
             _materialQuantities.isNotEmpty
-                ? json.encode(_selectedMaterialsList.where((material) {
-                    final hasValidName = material['materialName'] != null && 
-                                       material['materialName'].toString().isNotEmpty;
-                    final hasValidQuantity = material['quantity'] != null && 
-                                           (material['quantity'] as num) > 0;
+                ? json.encode(
+                  _selectedMaterialsList.where((material) {
+                    final hasValidName =
+                        material['materialName'] != null &&
+                        material['materialName'].toString().isNotEmpty;
+                    final hasValidQuantity =
+                        material['quantity'] != null &&
+                        (material['quantity'] as num) > 0;
                     return hasValidName && hasValidQuantity;
-                  }).toList())
+                  }).toList(),
+                )
                 : null,
         toDo:
             _descriptionController.text.isNotEmpty
@@ -2432,13 +2538,32 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                                     color: Colors.black.withValues(alpha: 0.7),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
-                                  child: Text(
-                                    '${index + 1}',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '${index + 1}',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      if (_selectedImages[index].isImage &&
+                                          _selectedImages[index]
+                                                  .compressedSize <
+                                              _selectedImages[index].size)
+                                        Text(
+                                          '${(_selectedImages[index].compressedSize / 1024).toStringAsFixed(0)}KB',
+                                          style: const TextStyle(
+                                            color: Colors.greenAccent,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                 ),
                               ),
@@ -2511,7 +2636,9 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                     ),
                     const SizedBox(width: 16),
                     Text(
-                      'Procesando...',
+                      _selectedImages.isNotEmpty
+                          ? 'Enviando archivos...'
+                          : 'Procesando...',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
