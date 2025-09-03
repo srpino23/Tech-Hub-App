@@ -1,6 +1,5 @@
 // Solo para móvil
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
@@ -52,14 +51,19 @@ Future<void> downloadPDFMobile({
 
 Future<bool> _requestStoragePermission() async {
   if (Platform.isAndroid) {
-    // Para Android 13+ (API 33+), usar permisos granulares
-    if (await _isAndroid13OrHigher()) {
-      final status = await Permission.photos.request();
-      return status.isGranted;
-    } else {
-      // Para Android 10-12, usar permiso de almacenamiento
-      final status = await Permission.storage.request();
-      return status.isGranted;
+    try {
+      // Para Android 13+ (API 33+), usar permisos granulares
+      if (await _isAndroid13OrHigher()) {
+        final status = await Permission.photos.request();
+        return status.isGranted;
+      } else {
+        // Para Android 10-12, usar permiso de almacenamiento
+        final status = await Permission.storage.request();
+        return status.isGranted;
+      }
+    } catch (e) {
+      debugPrint('Error requesting permission: $e');
+      return false;
     }
   }
   return true;
@@ -71,6 +75,7 @@ Future<bool> _isAndroid13OrHigher() async {
       final androidInfo = await _getAndroidVersion();
       return androidInfo >= 33;
     } catch (e) {
+      debugPrint('Error getting Android version: $e');
       return false;
     }
   }
@@ -78,8 +83,6 @@ Future<bool> _isAndroid13OrHigher() async {
 }
 
 Future<int> _getAndroidVersion() async {
-  // Implementación simple para obtener la versión de Android
-  // En una implementación real, podrías usar device_info_plus
   try {
     final result = await Process.run('getprop', ['ro.build.version.sdk']);
     if (result.exitCode == 0) {

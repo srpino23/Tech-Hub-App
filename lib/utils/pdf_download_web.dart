@@ -7,17 +7,25 @@ Future<void> downloadPDFWeb({
   required List<int> bytes,
   required String fileName,
 }) async {
-  final uint8List = Uint8List.fromList(bytes);
-  final blob = web.Blob([uint8List.toJS].toJS);
-  final url = web.URL.createObjectURL(blob);
-  final anchor = web.document.createElement('a') as web.HTMLAnchorElement
-    ..href = url
-    ..style.display = 'none'
-    ..download = fileName;
-  web.document.body?.appendChild(anchor);
-  anchor.click();
-  web.document.body?.removeChild(anchor);
-  web.URL.revokeObjectURL(url);
+  try {
+    final uint8List = Uint8List.fromList(bytes);
+    final blob = web.Blob([uint8List.toJS].toJS);
+    final url = web.URL.createObjectURL(blob);
+    
+    final anchor = web.document.createElement('a') as web.HTMLAnchorElement
+      ..href = url
+      ..style.display = 'none'
+      ..download = fileName;
+    
+    web.document.body?.appendChild(anchor);
+    anchor.click();
+    
+    // Limpiar recursos
+    web.document.body?.removeChild(anchor);
+    web.URL.revokeObjectURL(url);
+  } catch (e) {
+    throw Exception('Error descargando PDF en web: $e');
+  }
 }
 
 Future<void> downloadPDFMobile({
