@@ -196,7 +196,7 @@ class _MapScreenState extends State<MapScreen> {
 
     final String iconPath = 'lib/assets/mapIcons/$normalizedType-$status.svg';
 
-    return SvgPicture.asset(iconPath, width: 16, height: 16);
+    return SvgPicture.asset(iconPath, width: 18, height: 18);
   }
 
   String _translateCameraType(String type) {
@@ -400,7 +400,7 @@ class _MapScreenState extends State<MapScreen> {
             value: count.toDouble(),
             color: _getStatusColor(data['status'] as String),
             title: '',
-            radius: 19,
+            radius: 22,
             showTitle: false,
           ),
         );
@@ -411,8 +411,8 @@ class _MapScreenState extends State<MapScreen> {
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
-          height: 50,
-          width: 50,
+          height: 60,
+          width: 60,
           child: Stack(
             alignment: Alignment.center,
             children: [
@@ -420,14 +420,14 @@ class _MapScreenState extends State<MapScreen> {
                 PieChartData(
                   sections: sections,
                   sectionsSpace: 1,
-                  centerSpaceRadius: 12,
+                  centerSpaceRadius: 15,
                   borderData: FlBorderData(show: false),
                 ),
               ),
               Text(
                 '$onlineCount/$warningCount/$offlineCount',
                 style: const TextStyle(
-                  fontSize: 6,
+                  fontSize: 7,
                   fontWeight: FontWeight.bold,
                   color: Colors.black,
                 ),
@@ -477,8 +477,8 @@ class _MapScreenState extends State<MapScreen> {
         markers.add(
           Marker(
             point: center,
-            width: 70,
-            height: 70,
+            width: 80,
+            height: 80,
             child: _buildZonePieChart(zone, stats),
           ),
         );
@@ -541,16 +541,20 @@ class _MapScreenState extends State<MapScreen> {
     showDialog(
       context: context,
       builder: (BuildContext context) {
+        final isWideScreen = MediaQuery.of(context).size.width > 600;
+
         return Dialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(20),
           ),
           elevation: 0,
-          insetPadding: const EdgeInsets.all(16),
+          insetPadding: EdgeInsets.all(isWideScreen ? 32 : 16),
           child: Container(
             width: double.infinity,
             constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width - 32,
+              maxWidth:
+                  isWideScreen ? 800 : MediaQuery.of(context).size.width - 32,
+              maxHeight: MediaQuery.of(context).size.height * 0.85,
             ),
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -558,77 +562,103 @@ class _MapScreenState extends State<MapScreen> {
                 end: Alignment.bottomRight,
                 colors: [
                   Colors.white,
-                  Colors.blue.shade50.withValues(alpha: 0.3),
+                  Colors.blue.shade50.withValues(alpha: 0.2),
                 ],
               ),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.blue.withValues(alpha: 0.1),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
+                  color: Colors.blue.withValues(alpha: 0.15),
+                  blurRadius: 30,
+                  offset: const Offset(0, 15),
                 ),
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 5),
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 15,
+                  offset: const Offset(0, 8),
                 ),
               ],
             ),
-            padding: const EdgeInsets.all(20),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '${user['name'] ?? 'Usuario'} ${user['surname'] ?? ''}'
-                            .trim(),
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 2,
-                      ),
+                // Header mejorado
+                _buildUserDialogHeader(context, user, isWideScreen),
+
+                // Contenido con mejor organización
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(
+                      isWideScreen ? 32 : 20,
+                      0,
+                      isWideScreen ? 32 : 20,
+                      isWideScreen ? 32 : 20,
                     ),
-                    const SizedBox(width: 12),
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [Colors.grey.shade50, Colors.grey.shade100],
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Espaciado desde el header
+                        const SizedBox(height: 24),
+
+                        // Sección de información general
+                        _buildUserInfoSection(
+                          'Información del Usuario',
+                          LucideIcons.user,
+                          Colors.blue,
+                          [
+                            _buildUserDetailRow(
+                              'Nombre Completo',
+                              '${user['name'] ?? 'Usuario'} ${user['surname'] ?? ''}'
+                                  .trim(),
+                              LucideIcons.user,
+                              Colors.blue.shade600,
+                            ),
+                            if (user['email'] != null)
+                              _buildUserDetailRow(
+                                'Email',
+                                user['email'] as String,
+                                LucideIcons.mail,
+                                Colors.blue.shade600,
+                              ),
+                            if (user['team'] != null)
+                              _buildUserDetailRow(
+                                'Equipo',
+                                user['team'] as String,
+                                LucideIcons.users,
+                                Colors.blue.shade600,
+                              ),
+                          ],
                         ),
-                        borderRadius: BorderRadius.circular(8),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.05),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close, color: Colors.grey),
-                        iconSize: 20,
-                        padding: const EdgeInsets.all(8),
-                        constraints: const BoxConstraints(
-                          minWidth: 36,
-                          minHeight: 36,
+
+                        const SizedBox(height: 24),
+
+                        // Sección de ubicación
+                        _buildUserInfoSection(
+                          'Información de Ubicación',
+                          LucideIcons.mapPin,
+                          Colors.purple,
+                          [
+                            _buildUserDetailRow(
+                              'Coordenadas',
+                              '${location['latitude']}, ${location['longitude']}',
+                              LucideIcons.mapPin,
+                              Colors.purple.shade600,
+                            ),
+                            _buildUserDetailRow(
+                              'Última Actualización',
+                              _formatUserDate(location['date']),
+                              LucideIcons.clock,
+                              Colors.purple.shade600,
+                            ),
+                          ],
                         ),
-                      ),
+
+                        const SizedBox(height: 24),
+
+                        // Sección de mapa con ubicación
+                        _buildUserLocationSection(location, isWideScreen),
+                      ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                _buildUserInfoRow(
-                  'Ubicación',
-                  '${location['latitude']}, ${location['longitude']}',
-                ),
-                _buildUserInfoRow(
-                  'Última actualización',
-                  _formatUserDate(location['date']),
+                  ),
                 ),
               ],
             ),
@@ -638,49 +668,395 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  Widget _buildUserInfoRow(String label, String value) {
-    IconData icon;
-    Color iconColor;
+  // Helper methods for improved user dialog
 
-    switch (label.toLowerCase()) {
-      case 'ubicación':
-        icon = Icons.location_on;
-        iconColor = Colors.red;
-        break;
-      case 'última actualización':
-        icon = Icons.access_time;
-        iconColor = Colors.grey;
-        break;
-      default:
-        icon = Icons.info;
-        iconColor = Colors.grey;
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildUserDialogHeader(
+    BuildContext context,
+    Map<String, dynamic> user,
+    bool isWideScreen,
+  ) {
+    return Container(
+      padding: EdgeInsets.all(isWideScreen ? 32 : 24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Colors.blue.shade400, Colors.blue.shade600],
+        ),
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+      ),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Icon(icon, size: 16, color: iconColor),
-              const SizedBox(width: 8),
-              Text(
-                '$label:',
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
-            ],
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              LucideIcons.user,
+              color: Colors.white,
+              size: isWideScreen ? 28 : 24,
+            ),
           ),
-          const SizedBox(height: 4),
-          Padding(
-            padding: const EdgeInsets.only(left: 24),
-            child: Text(
-              value,
-              style: const TextStyle(color: Colors.grey),
-              softWrap: true,
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Información del Usuario',
+                  style: TextStyle(
+                    fontSize: isWideScreen ? 16 : 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white.withValues(alpha: 0.9),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${user['name'] ?? 'Usuario'} ${user['surname'] ?? ''}'
+                      .trim(),
+                  style: TextStyle(
+                    fontSize: isWideScreen ? 22 : 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: IconButton(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.close, color: Colors.white),
+              iconSize: isWideScreen ? 24 : 20,
+              padding: const EdgeInsets.all(12),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildUserInfoSection(
+    String title,
+    IconData icon,
+    Color color,
+    List<Widget> children,
+  ) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  color.withValues(alpha: 0.1),
+                  color.withValues(alpha: 0.05),
+                ],
+              ),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(icon, color: color, size: 18),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: color.withValues(alpha: 0.9),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(children: children),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUserDetailRow(
+    String label,
+    String value,
+    IconData icon,
+    Color iconColor,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Icon(icon, size: 16, color: iconColor),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey.shade900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUserLocationSection(
+    Map<String, dynamic> location,
+    bool isWideScreen,
+  ) {
+    return _buildUserInfoSection(
+      'Mapa de Ubicación',
+      LucideIcons.map,
+      Colors.green,
+      [
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.green.shade200),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: _buildUserMapSection(location),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildUserMapSection(Map<String, dynamic> location) {
+    final lat = double.tryParse(location['latitude'] as String? ?? '');
+    final lng = double.tryParse(location['longitude'] as String? ?? '');
+
+    if (lat == null || lng == null) {
+      return Container(
+        height: 250,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(LucideIcons.mapPin, size: 48, color: Colors.grey.shade400),
+              const SizedBox(height: 16),
+              Text(
+                'Ubicación no disponible',
+                style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          height: 250,
+          width: double.infinity,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.green.withValues(alpha: 0.1),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Stack(
+              children: [
+                FlutterMap(
+                  options: MapOptions(
+                    initialCenter: LatLng(lat, lng),
+                    initialZoom: 16.0,
+                    maxZoom: 18.0,
+                    minZoom: 5.0,
+                    interactionOptions: const InteractionOptions(
+                      flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+                    ),
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate:
+                          'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+                      subdomains: const ['a', 'b', 'c', 'd'],
+                      userAgentPackageName: 'com.example.techhub_mobile',
+                    ),
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          point: LatLng(lat, lng),
+                          width: 50,
+                          height: 50,
+                          child: Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade600,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 3),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.blue.withValues(alpha: 0.4),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.2),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              LucideIcons.user,
+                              color: Colors.white,
+                              size: 26,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                Positioned(
+                  bottom: 12,
+                  left: 12,
+                  right: 12,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.8),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${location['latitude']}, ${location['longitude']}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap:
+                              () => _copyUserLocation(
+                                location['latitude'] as String,
+                                location['longitude'] as String,
+                              ),
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade600,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Icon(
+                              LucideIcons.copy,
+                              color: Colors.white,
+                              size: 14,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _copyUserLocation(String latitude, String longitude) async {
+    await Clipboard.setData(ClipboardData(text: '$latitude,$longitude'));
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Ubicación del usuario copiada al portapapeles'),
+        duration: const Duration(seconds: 2),
+        backgroundColor: Colors.green,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
   }
@@ -882,6 +1258,8 @@ class _MapScreenState extends State<MapScreen> {
               camera['latitude'] as double,
               camera['longitude'] as double,
             ),
+            width: 18,
+            height: 18,
             child: GestureDetector(
               onTap: () => _showCameraInfo(camera),
               child: _buildCameraIcon(

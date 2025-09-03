@@ -2902,49 +2902,97 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                           ),
                         ),
                         const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: statusColor.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                statusText,
-                                style: TextStyle(
-                                  fontSize: isWideScreen ? 12 : 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: statusColor,
-                                ),
-                              ),
-                            ),
-                            if (_showCameras && item['type'] != null) ...[
-                              const SizedBox(width: 8),
+                        // Separar las burbujas en pantallas pequeñas para evitar superposición
+                        if (isWideScreen)
+                          Row(
+                            children: [
                               Container(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 8,
                                   vertical: 4,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: Colors.blue.withValues(alpha: 0.1),
+                                  color: statusColor.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text(
-                                  _translateCameraType(item['type']),
+                                  statusText,
                                   style: TextStyle(
-                                    fontSize: isWideScreen ? 12 : 11,
+                                    fontSize: 12,
                                     fontWeight: FontWeight.w600,
-                                    color: Colors.blue.shade700,
+                                    color: statusColor,
                                   ),
                                 ),
                               ),
+                              if (_showCameras && item['type'] != null) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    _translateCameraType(item['type']),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.blue.shade700,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ],
-                          ],
-                        ),
+                          )
+                        else
+                          // En pantallas pequeñas, usar Column para evitar superposición
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: statusColor.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  statusText,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: statusColor,
+                                  ),
+                                ),
+                              ),
+                              if (_showCameras && item['type'] != null) ...[
+                                const SizedBox(height: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    _translateCameraType(item['type']),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.blue.shade700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
                         if (item['zone'] != null) ...[
                           const SizedBox(height: 8),
                           Row(
