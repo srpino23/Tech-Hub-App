@@ -1205,7 +1205,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       pdf.addPage(_buildLiableOperabilityPage());
 
       // Cerrar dialog de carga
-      Navigator.of(context).pop();
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
 
       // Mostrar PDF
       await Printing.layoutPdf(
@@ -1215,17 +1217,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     } catch (e) {
       // Cerrar dialog si está abierto
-      if (Navigator.of(context).canPop()) {
+      if (mounted && Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
 
       // Mostrar error
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error al exportar PDF: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al exportar PDF: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -1466,8 +1470,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                   pw.SizedBox(height: 8),
                   pw.Text(
-                    'Del total de ${_cameras.length} cámaras en el sistema, $totalOperationalCameras están operacionales. ' +
-                        'El ${_getGeneralOperabilityPercentage().round()}% del sistema se encuentra funcionando correctamente.',
+                    'Del total de ${_cameras.length} cámaras en el sistema, $totalOperationalCameras están operacionales. '
+                    'El ${_getGeneralOperabilityPercentage().round()}% del sistema se encuentra funcionando correctamente.',
                     style: pw.TextStyle(fontSize: 14, color: PdfColors.grey700),
                     textAlign: pw.TextAlign.center,
                   ),
