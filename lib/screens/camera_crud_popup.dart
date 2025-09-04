@@ -413,6 +413,8 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
     String? selectedServer;
     String? selectedZone;
     String? selectedResponsible;
+    String? selectedStatus =
+        'En Línea'; // Estado por defecto para nuevas cámaras
 
     return StatefulBuilder(
       builder: (context, setDialogState) {
@@ -638,6 +640,26 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                             isWideScreen: isWideScreen,
                           ),
 
+                          // Estado de la cámara
+                          _buildEditDropdown(
+                            label: 'Estado',
+                            value: selectedStatus,
+                            items:
+                                _statusOptions.map((status) {
+                                  return DropdownMenuItem(
+                                    value: status,
+                                    child: Text(status),
+                                  );
+                                }).toList(),
+                            onChanged: (value) {
+                              setDialogState(() {
+                                selectedStatus = value;
+                              });
+                            },
+                            icon: LucideIcons.activity,
+                            isWideScreen: isWideScreen,
+                          ),
+
                           const SizedBox(height: 32),
 
                           // Botones de acción
@@ -702,6 +724,28 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                                             mappedType = selectedType;
                                         }
 
+                                        // Mapear el estado del dropdown al formato de la base de datos
+                                        String? mappedStatus;
+                                        switch (selectedStatus?.toLowerCase()) {
+                                          case 'en línea':
+                                            mappedStatus = 'online';
+                                            break;
+                                          case 'fuera de línea':
+                                            mappedStatus = 'offline';
+                                            break;
+                                          case 'advertencia':
+                                            mappedStatus = 'warning';
+                                            break;
+                                          case 'mantenimiento':
+                                            mappedStatus = 'maintenance';
+                                            break;
+                                          case 'retirada':
+                                            mappedStatus = 'removed';
+                                            break;
+                                          default:
+                                            mappedStatus = selectedStatus;
+                                        }
+
                                         final cameraData = {
                                           'name': nameController.text,
                                           'type': mappedType,
@@ -726,6 +770,7 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                                           'liable': _normalizeString(
                                             selectedResponsible,
                                           ),
+                                          'status': mappedStatus ?? 'online',
                                         };
 
                                         final response =
@@ -1121,7 +1166,10 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
             value: value,
             items: items,
             onChanged: onChanged,
-            style: TextStyle(fontSize: isWideScreen ? 16 : 14),
+            style: TextStyle(
+              fontSize: isWideScreen ? 16 : 14,
+              color: Colors.black,
+            ),
             decoration: InputDecoration(
               prefixIcon: Container(
                 margin: const EdgeInsets.all(12),
@@ -1211,34 +1259,18 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
       text: camera['password'] ?? '',
     );
 
-    String? selectedType = camera['type'] as String?;
+    // Normalizar el tipo de cámara para que coincida con las opciones del dropdown
+    String? selectedType = _translateCameraType(camera['type'] as String?);
+
+    // Buscar zona y responsable en las listas normalizadas
     String? selectedZone = _findValueInList(_zones, camera['zone'] as String?);
     String? selectedResponsible = _findValueInList(
       _responsibles,
       camera['liable'] as String?,
     );
 
-    // Normalizar el tipo de cámara para que coincida con las opciones del dropdown
-    if (selectedType != null) {
-      // Mapear tipos de la base de datos a los tipos del dropdown
-      switch (selectedType.toLowerCase()) {
-        case 'fixed':
-          selectedType = 'Fija';
-          break;
-        case 'dome':
-          selectedType = 'Domo';
-          break;
-        case 'lpr':
-          selectedType = 'LPR';
-          break;
-        case 'button':
-          selectedType = 'Botón';
-          break;
-        default:
-          // Si no coincide, usar el valor original
-          break;
-      }
-    }
+    // Normalizar el estado actual de la cámara
+    String? selectedStatus = _translateStatus(camera['status'] as String?);
 
     showDialog(
       context: context,
@@ -1449,6 +1481,26 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                                   isWideScreen: isWideScreen,
                                 ),
 
+                                // Estado de la cámara
+                                _buildEditDropdown(
+                                  label: 'Estado',
+                                  value: selectedStatus,
+                                  items:
+                                      _statusOptions.map((status) {
+                                        return DropdownMenuItem(
+                                          value: status,
+                                          child: Text(status),
+                                        );
+                                      }).toList(),
+                                  onChanged: (value) {
+                                    setDialogState(() {
+                                      selectedStatus = value;
+                                    });
+                                  },
+                                  icon: LucideIcons.activity,
+                                  isWideScreen: isWideScreen,
+                                ),
+
                                 const SizedBox(height: 32),
 
                                 // Botones de acción
@@ -1506,6 +1558,29 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                                                   mappedType = selectedType;
                                               }
 
+                                              // Mapear el estado del dropdown al formato de la base de datos
+                                              String? mappedStatus;
+                                              switch (selectedStatus
+                                                  ?.toLowerCase()) {
+                                                case 'en línea':
+                                                  mappedStatus = 'online';
+                                                  break;
+                                                case 'fuera de línea':
+                                                  mappedStatus = 'offline';
+                                                  break;
+                                                case 'advertencia':
+                                                  mappedStatus = 'warning';
+                                                  break;
+                                                case 'mantenimiento':
+                                                  mappedStatus = 'maintenance';
+                                                  break;
+                                                case 'retirada':
+                                                  mappedStatus = 'removed';
+                                                  break;
+                                                default:
+                                                  mappedStatus = selectedStatus;
+                                              }
+
                                               final cameraData = {
                                                 'name': nameController.text,
                                                 'type': mappedType,
@@ -1531,6 +1606,7 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                                                 'liable': _normalizeString(
                                                   selectedResponsible,
                                                 ),
+                                                'status': mappedStatus,
                                               };
 
                                               final response =
@@ -2197,6 +2273,10 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
           value: value,
+          style: TextStyle(
+            fontSize: isWideScreen ? 16 : 14,
+            color: Colors.grey.shade800,
+          ),
           decoration: InputDecoration(
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             contentPadding: EdgeInsets.symmetric(

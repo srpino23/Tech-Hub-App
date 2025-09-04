@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../auth_manager.dart';
 import '../services/techhub_api_client.dart';
+import '../services/analyzer_api_client.dart';
 import '../services/location_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:file_picker/file_picker.dart';
@@ -178,6 +179,13 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   final Map<String, int> _materialQuantities = {};
   bool _isLoadingMaterials = false;
 
+  // Cameras
+  List<Map<String, dynamic>> _availableCameras = [];
+  String? _selectedCameraName;
+  final TextEditingController _cameraSearchController = TextEditingController();
+  bool _isLoadingCameras = false;
+  List<Map<String, dynamic>> _filteredCameras = [];
+
   // Images
   final List<UniversalFile> _selectedImages = [];
 
@@ -199,6 +207,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     super.initState();
     _getCurrentLocation();
     _loadMaterials();
+    _loadCameras();
 
     // Si hay un reporte existente, cargar sus datos
     if (widget.existingReportId != null) {
@@ -222,6 +231,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     _stNameController.addListener(_onFormChanged);
     _stIpController.addListener(_onFormChanged);
     _ccqController.addListener(_onFormChanged);
+    _cameraSearchController.addListener(_filterCameras);
   }
 
   @override
@@ -237,6 +247,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     _stNameController.dispose();
     _stIpController.dispose();
     _ccqController.dispose();
+    _cameraSearchController.dispose();
     super.dispose();
   }
 
@@ -395,6 +406,91 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         'quantity': quantity,
       });
     }
+  }
+
+  Future<void> _loadCameras() async {
+    print('DEBUG: _loadCameras() iniciado');
+    if (!mounted) return;
+    setState(() {
+      _isLoadingCameras = true;
+    });
+
+    try {
+      print('DEBUG: Llamando a AnalyzerApiClient.getCameras()');
+      final response = await AnalyzerApiClient.getCameras();
+      print('DEBUG: Respuesta recibida - Success: ${response.isSuccess}, Data: ${response.data != null}');
+
+      if (response.isSuccess && response.data != null) {
+        final allCameras = response.data!;
+        
+        // Obtener el nombre del team actual para filtrar cámaras
+        final currentTeamName = widget.authManager.teamName;
+        
+        // Debug: Mostrar información para ayudar a identificar el problema
+        print('DEBUG: Team actual: "$currentTeamName"');
+        print('DEBUG: Total cámaras cargadas: ${allCameras.length}');
+        
+        // Mostrar todas las cámaras y sus liable para debug
+        for (var i = 0; i < allCameras.length && i < 5; i++) {
+          final camera = allCameras[i];
+          print('DEBUG: Cámara ${i + 1}: ${camera['name']} - Liable: "${camera['liable']}"');
+        }
+        
+        // Filtrar cámaras por el campo liable que coincida con el team actual
+        final teamCameras = allCameras.where((camera) {
+          final cameraLiable = camera['liable']?.toString().toLowerCase().trim();
+          final teamNameLower = currentTeamName?.toLowerCase().trim();
+          final matches = cameraLiable == teamNameLower;
+          
+          if (!matches && camera['liable'] != null) {
+            print('DEBUG: No match - Cámara: ${camera['name']}, Liable: "$cameraLiable" vs Team: "$teamNameLower"');
+          }
+          
+          return matches;
+        }).toList();
+        
+        print('DEBUG: Cámaras filtradas para el team: ${teamCameras.length}');
+
+        if (mounted) {
+          setState(() {
+            _availableCameras = teamCameras;
+            _filteredCameras = teamCameras;
+          });
+        }
+      } else {
+        print('DEBUG: Error en respuesta - Success: ${response.isSuccess}, Error: ${response.error}');
+      }
+    } catch (e) {
+      print('DEBUG: Excepción en _loadCameras: $e');
+      if (mounted) {
+        _showError('Error cargando cámaras: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingCameras = false;
+        });
+      }
+    }
+  }
+
+  void _filterCameras() {
+    final query = _cameraSearchController.text.toLowerCase();
+    setState(() {
+      if (query.isEmpty) {
+        _filteredCameras = _availableCameras;
+      } else {
+        _filteredCameras = _availableCameras.where((camera) {
+          final cameraName = camera['name']?.toString().toLowerCase() ?? '';
+          final cameraZone = camera['zone']?.toString().toLowerCase() ?? '';
+          final cameraType = camera['type']?.toString().toLowerCase() ?? '';
+          
+          return cameraName.contains(query) ||
+                 cameraZone.contains(query) ||
+                 cameraType.contains(query);
+        }).toList();
+      }
+    });
   }
 
   List<Map<String, dynamic>> get _selectedMaterialsList {
@@ -816,6 +912,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         location:
             '${_currentLocation!.latitude},${_currentLocation!.longitude}',
         connectivity: _connectivity,
+        cameraName: _selectedCameraName,
         db:
             _connectivity == 'Fibra óptica' && _dbController.text.isNotEmpty
                 ? _dbController.text
@@ -926,6 +1023,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
           _descriptionController.text = report.toDo ?? '';
           _typeOfWork = report.typeOfWork ?? _typeOfWorkOptions.first;
           _connectivity = report.connectivity ?? _connectivityOptions.first;
+          _selectedCameraName = report.cameraName;
 
           // Populate connectivity-specific fields
           if (report.connectivity == 'Fibra óptica') {
@@ -1074,6 +1172,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                 ? '${_currentLocation!.latitude},${_currentLocation!.longitude}'
                 : null,
         connectivity: _connectivity,
+        cameraName: _selectedCameraName,
         db:
             _connectivity == 'Fibra óptica' && _dbController.text.isNotEmpty
                 ? _dbController.text
@@ -1140,6 +1239,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     _stNameController.clear();
     _stIpController.clear();
     _ccqController.clear();
+    _cameraSearchController.clear();
 
     // Resetear variables del formulario
     setState(() {
@@ -1148,6 +1248,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       _usingMaterials = false;
       _materialQuantities.clear();
       _selectedImages.clear();
+      _selectedCameraName = null;
+      _filteredCameras = _availableCameras;
       _isSubmitting = false;
       _currentReportId = null;
       _isDraftCreated = false;
@@ -1315,6 +1417,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
               _buildTypeOfWorkSection(),
               const SizedBox(height: 24),
               _buildConnectivitySection(),
+              const SizedBox(height: 24),
+              _buildCameraSection(),
               const SizedBox(height: 24),
               _buildDescriptionSection(),
               const SizedBox(height: 24),
@@ -1832,6 +1936,300 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                 const Expanded(flex: 1, child: SizedBox()),
               ],
             ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCameraSection() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E293B).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  LucideIcons.camera,
+                  color: const Color(0xFF1E293B),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Cámara Asociada',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[800],
+                  letterSpacing: 0.15,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          
+          // Buscador de cámaras
+          TextFormField(
+            controller: _cameraSearchController,
+            decoration: InputDecoration(
+              labelText: 'Buscar cámara...',
+              hintText: 'Escriba el nombre, zona o tipo de cámara',
+              labelStyle: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+              hintStyle: TextStyle(
+                color: Colors.grey[400],
+                fontSize: 13,
+              ),
+              prefixIcon: Container(
+                margin: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  LucideIcons.search,
+                  color: Colors.blue.shade600,
+                  size: 18,
+                ),
+              ),
+              suffixIcon: _selectedCameraName != null
+                  ? Container(
+                      margin: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        LucideIcons.check,
+                        color: Colors.green.shade600,
+                        size: 18,
+                      ),
+                    )
+                  : null,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.grey[300]!),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.grey[300]!),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(
+                  color: Color(0xFF1E293B),
+                  width: 2,
+                ),
+              ),
+              filled: true,
+              fillColor: Colors.grey[50],
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 16,
+              ),
+            ),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey[800],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Cámara seleccionada
+          if (_selectedCameraName != null) ...[
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.green[50]!, Colors.green[100]!],
+                ),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.green[200]!),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.green[600],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      LucideIcons.camera,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Cámara seleccionada',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.green[700],
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _selectedCameraName!,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.green[800],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedCameraName = null;
+                        _cameraSearchController.clear();
+                        _filteredCameras = _availableCameras;
+                      });
+                      _onFormChanged();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.red[100],
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Icon(
+                        LucideIcons.x,
+                        color: Colors.red[600],
+                        size: 16,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else ...[
+            // Lista de cámaras filtradas
+            if (_isLoadingCameras)
+              Container(
+                padding: const EdgeInsets.all(20),
+                child: const Center(
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else if (_filteredCameras.isEmpty) 
+              // DEBUG: ${print('DEBUG: _filteredCameras.isEmpty = ${_filteredCameras.isEmpty}, _availableCameras.length = ${_availableCameras.length}')}
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.orange[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      LucideIcons.camera,
+                      color: Colors.orange[600],
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _cameraSearchController.text.isEmpty
+                            ? 'No hay cámaras disponibles para tu equipo'
+                            : 'No se encontraron cámaras con ese criterio',
+                        style: TextStyle(
+                          color: Colors.orange[700],
+                          fontWeight: FontWeight.w500,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Container(
+                constraints: const BoxConstraints(maxHeight: 200),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey[300]!),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _filteredCameras.length,
+                  itemBuilder: (context, index) {
+                    final camera = _filteredCameras[index];
+                    final cameraName = camera['name']?.toString() ?? 'Cámara sin nombre';
+                    final cameraZone = camera['zone']?.toString() ?? 'Sin zona';
+                    final cameraType = camera['type']?.toString() ?? 'Sin tipo';
+                    
+                    return ListTile(
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.blue[100],
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          LucideIcons.camera,
+                          color: Colors.blue[700],
+                          size: 20,
+                        ),
+                      ),
+                      title: Text(
+                        cameraName,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      subtitle: Text(
+                        '$cameraZone • $cameraType',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 12,
+                        ),
+                      ),
+                      onTap: () {
+                        setState(() {
+                          _selectedCameraName = cameraName;
+                        });
+                        _onFormChanged();
+                      },
+                    );
+                  },
+                ),
+              ),
           ],
         ],
       ),

@@ -46,6 +46,7 @@ class ReportResponse {
   final String? ap;
   final String? st;
   final String? ccq;
+  final String? cameraName;
   final List<String>? imagesUrl;
   final DateTime? date;
 
@@ -67,6 +68,7 @@ class ReportResponse {
     this.ap,
     this.st,
     this.ccq,
+    this.cameraName,
     this.imagesUrl,
     this.date,
   });
@@ -90,6 +92,7 @@ class ReportResponse {
       ap: json['ap']?.toString(),
       st: json['st']?.toString(),
       ccq: json['ccq']?.toString(),
+      cameraName: json['cameraName']?.toString(),
       imagesUrl: (json['imagesUrl'] as List<dynamic>?)
           ?.map((e) => e.toString())
           .toList(),
@@ -116,6 +119,7 @@ class ReportResponse {
       'ap': ap,
       'st': st,
       'ccq': ccq,
+      'cameraName': cameraName,
       'imagesUrl': imagesUrl,
       'date': date?.toIso8601String(),
     };

@@ -5,6 +5,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../auth_manager.dart';
 import '../services/analyzer_api_client.dart';
+import '../utils/map_utils.dart';
 
 class CamerasScreen extends StatefulWidget {
   final AuthManager authManager;
@@ -19,11 +20,21 @@ class _CamerasScreenState extends State<CamerasScreen> {
   List<Map<String, dynamic>> _cameras = [];
   bool _isLoading = true;
   bool _isShowingErrorDialog = false;
+  
+  // MapController para gestionar el ciclo de vida del mapa
+  MapController? _mapController;
 
   @override
   void initState() {
     super.initState();
+    _mapController = MapController();
     _loadCameras();
+  }
+
+  @override
+  void dispose() {
+    MapUtils.safeDisposeMapController(_mapController);
+    super.dispose();
   }
 
   Future<void> _loadCameras() async {
@@ -730,25 +741,13 @@ class _CamerasScreenState extends State<CamerasScreen> {
             child: Stack(
               children: [
                 FlutterMap(
-                  options: MapOptions(
-                    initialCenter: LatLng(
-                      camera['latitude'] as double,
-                      camera['longitude'] as double,
-                    ),
-                    initialZoom: 16.0,
-                    maxZoom: 18.0,
-                    minZoom: 5.0,
-                    interactionOptions: const InteractionOptions(
-                      flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
-                    ),
+                  mapController: _mapController,
+                  options: MapUtils.createOptimizedMapOptions(
+                    lat: camera['latitude'] as double,
+                    lng: camera['longitude'] as double,
                   ),
                   children: [
-                    TileLayer(
-                      urlTemplate:
-                          'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-                      subdomains: const ['a', 'b', 'c', 'd'],
-                      userAgentPackageName: 'com.example.techhub_mobile',
-                    ),
+                    MapUtils.createOptimizedTileLayer(),
                     MarkerLayer(
                       markers: [
                         Marker(

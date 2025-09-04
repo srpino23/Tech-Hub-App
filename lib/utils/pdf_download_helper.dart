@@ -2,9 +2,25 @@ import 'package:flutter/foundation.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:http/http.dart' as http;
+import 'data_helpers.dart';
 
 // Importaciones condicionales para web
 import 'pdf_download_web.dart' if (dart.library.io) 'pdf_download_mobile.dart';
+
+// Clase helper para datos del reporte
+class _ReportData {
+  final Map<String, dynamic> report;
+  final List<Map<String, dynamic>> users;
+  final List imageUrls;
+  final List<Map<String, dynamic>> inventory;
+
+  _ReportData({
+    required this.report,
+    required this.users,
+    required this.imageUrls,
+    required this.inventory,
+  });
+}
 
 class PDFDownloadHelper {
   static Future<void> downloadPDF({
@@ -18,7 +34,6 @@ class PDFDownloadHelper {
         await downloadPDFMobile(bytes: bytes, fileName: fileName);
       }
     } catch (e) {
-      debugPrint('Error en downloadPDF: $e');
       rethrow;
     }
   }
@@ -30,7 +45,6 @@ class PDFDownloadHelper {
     try {
       await sharePDFFile(bytes: bytes, fileName: fileName);
     } catch (e) {
-      debugPrint('Error en sharePDF: $e');
       rethrow;
     }
   }
@@ -40,37 +54,12 @@ class PDFDownloadHelper {
     required Map<String, dynamic> data,
   }) async {
     try {
-      if (kIsWeb) {
-        // En web, usar compute normalmente
-        return await _generatePDFInBackgroundWeb(data);
-      } else {
-        // En móvil, ejecutar directamente para evitar problemas con BackgroundIsolateBinaryMessenger
-        return await _generatePDFInBackgroundMobile(data);
-      }
+      return kIsWeb 
+        ? await compute(_generatePDFInBackgroundIsolate, data)
+        : await _generatePDFInBackgroundIsolate(data);
     } catch (e) {
-      return {
-        'success': false,
-        'bytes': null,
-        'fileName': null,
-        'error': e.toString(),
-      };
+      return _createErrorResult(e.toString());
     }
-  }
-
-  // Implementación para web usando compute
-  static Future<Map<String, dynamic>> _generatePDFInBackgroundWeb(
-    Map<String, dynamic> data,
-  ) async {
-    // En web, usar compute normalmente
-    return await compute(_generatePDFInBackgroundIsolate, data);
-  }
-
-  // Implementación para móvil sin compute
-  static Future<Map<String, dynamic>> _generatePDFInBackgroundMobile(
-    Map<String, dynamic> data,
-  ) async {
-    // En móvil, ejecutar directamente para evitar problemas con BackgroundIsolateBinaryMessenger
-    return await _generatePDFInBackgroundIsolate(data);
   }
 
   // Función que se ejecuta en isolate separado (solo para web)
@@ -78,116 +67,108 @@ class PDFDownloadHelper {
     Map<String, dynamic> data,
   ) async {
     try {
-      final report = data['report'] as Map<String, dynamic>;
-      final users = data['users'] as List<Map<String, dynamic>>;
-      final imageUrls = data['imageUrls'] as List;
-      final inventory = data['inventory'] as List<Map<String, dynamic>>;
-
-      // 1. Descargar imágenes en paralelo con timeout más agresivo
-      List<List<int>> imageBytes = [];
-      if (imageUrls.isNotEmpty) {
-        final limitedUrls =
-            imageUrls.take(4).toList(); // Reducir a 4 imágenes máximo
-        final futures = limitedUrls.map((url) async {
-          try {
-            final response = await http
-                .get(
-                  Uri.parse(url.toString()),
-                  headers: {'User-Agent': 'TechHub-Mobile/1.0'},
-                )
-                .timeout(const Duration(seconds: 5)); // Reducir timeout
-
-            if (response.statusCode == 200) {
-              return response.bodyBytes;
-            }
-          } catch (e) {
-            // Silenciar errores de imagen individual
-          }
-          return null;
-        });
-
-        final results = await Future.wait(futures);
-        for (final result in results) {
-          if (result != null) {
-            imageBytes.add(result);
-          }
-        }
-      }
-
-      // 2. Generar PDF
+      final extractedData = _extractDataFromMap(data);
+      final imageBytes = await _downloadImages(extractedData.imageUrls);
       final pdf = await _generateReportPDFStatic({
-        'report': report,
-        'users': users,
+        'report': extractedData.report,
+        'users': extractedData.users,
         'imageBytes': imageBytes,
-        'inventory': inventory,
+        'inventory': extractedData.inventory,
       });
 
-      // 3. Convertir a bytes
       final bytes = await pdf.save();
-
-      // 4. Preparar nombre del archivo
-      String userName = 'Usuario';
-      try {
-        final userId = report['userId']?.toString();
-        if (userId != null && users.isNotEmpty) {
-          final user = users.firstWhere(
-            (user) =>
-                user['_id']?.toString() == userId ||
-                user['userId']?.toString() == userId,
-            orElse: () => <String, dynamic>{},
-          );
-          if (user.isNotEmpty) {
-            userName = _extractUserNameStatic(user);
-          }
-        }
-      } catch (e) {
-        // Usar nombre por defecto si falla
-      }
-
-      final fileName =
-          'Remito_${userName.replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}.pdf';
-
-      // 5. Descargar/guardar PDF
+      final fileName = _generateFileName(extractedData.report, extractedData.users);
+      
       await downloadPDF(bytes: bytes, fileName: fileName);
 
-      return {
-        'success': true,
-        'bytes': bytes,
-        'fileName': fileName,
-        'error': null,
-      };
+      return _createSuccessResult(bytes, fileName);
     } catch (e) {
-      return {
-        'success': false,
-        'bytes': null,
-        'fileName': null,
-        'error': e.toString(),
-      };
+      return _createErrorResult(e.toString());
     }
+  }
+
+  // Helper functions for data extraction and processing
+  static _ReportData _extractDataFromMap(Map<String, dynamic> data) {
+    return _ReportData(
+      report: data['report'] as Map<String, dynamic>,
+      users: data['users'] as List<Map<String, dynamic>>,
+      imageUrls: data['imageUrls'] as List,
+      inventory: data['inventory'] as List<Map<String, dynamic>>,
+    );
+  }
+
+  static Future<List<List<int>>> _downloadImages(List imageUrls) async {
+    if (imageUrls.isEmpty) return [];
+    
+    final limitedUrls = imageUrls.take(4).toList();
+    final futures = limitedUrls.map(_downloadSingleImage);
+    final results = await Future.wait(futures);
+    
+    return results.where((result) => result != null && result.isNotEmpty).cast<List<int>>().toList();
+  }
+
+  static Future<List<int>?> _downloadSingleImage(dynamic url) async {
+    try {
+      final response = await http.get(
+        Uri.parse(url.toString()),
+        headers: {
+          'User-Agent': 'TechHub-Mobile/1.0',
+          'Accept': 'image/*',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      return (response.statusCode == 200 && response.bodyBytes.isNotEmpty) 
+        ? response.bodyBytes 
+        : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  static String _generateFileName(Map<String, dynamic> report, List<Map<String, dynamic>> users) {
+    final userName = _getUserNameFromReport(report, users);
+    return 'Remito_${userName.replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+  }
+
+  static String _getUserNameFromReport(Map<String, dynamic> report, List<Map<String, dynamic>> users) {
+    final userId = report['userId']?.toString();
+    return _getUserNameFromList(userId, users) == 'Desconocido' ? 'Usuario' : _getUserNameFromList(userId, users);
+  }
+
+  static String _getUserNameFromList(String? userId, List<Map<String, dynamic>> users) {
+    if (userId == null || users.isEmpty) return 'Desconocido';
+    
+    try {
+      final user = users.firstWhere(
+        (user) => user['_id']?.toString() == userId || user['userId']?.toString() == userId,
+        orElse: () => <String, dynamic>{},
+      );
+      return user.isNotEmpty ? _extractUserNameStatic(user) : 'Desconocido';
+    } catch (e) {
+      return 'Desconocido';
+    }
+  }
+
+  static Map<String, dynamic> _createSuccessResult(List<int> bytes, String fileName) {
+    return {
+      'success': true,
+      'bytes': bytes,
+      'fileName': fileName,
+      'error': null,
+    };
+  }
+
+  static Map<String, dynamic> _createErrorResult(String error) {
+    return {
+      'success': false,
+      'bytes': null,
+      'fileName': null,
+      'error': error,
+    };
   }
 
   // Helper function for PDF generation
-  static String _extractUserNameStatic(Map<String, dynamic> user) {
-    // Usar directamente name y surname si están disponibles
-    final name = user['name']?.toString().trim() ?? '';
-    final surname = user['surname']?.toString().trim() ?? '';
-
-    if (name.isNotEmpty && surname.isNotEmpty) {
-      return '$name $surname';
-    } else if (name.isNotEmpty) {
-      return name;
-    } else if (surname.isNotEmpty) {
-      return surname;
-    }
-
-    // Fallback a otros campos comunes
-    final fullName = user['fullName']?.toString().trim();
-    if (fullName?.isNotEmpty == true) {
-      return fullName!;
-    }
-
-    return 'Desconocido';
-  }
+  static String _extractUserNameStatic(Map<String, dynamic> user) => DataHelpers.extractUserName(user);
 
   // Función para generar el PDF del reporte
   static Future<pw.Document> _generateReportPDFStatic(
@@ -201,20 +182,7 @@ class PDFDownloadHelper {
     final pdf = pw.Document();
 
     // Helper function to get user name - optimizada
-    String getUserName(String? userId) {
-      if (userId == null) return 'Desconocido';
-      try {
-        final user = users.firstWhere(
-          (user) =>
-              user['userId']?.toString() == userId ||
-              user['_id']?.toString() == userId,
-          orElse: () => <String, dynamic>{},
-        );
-        return user.isNotEmpty ? _extractUserNameStatic(user) : 'Desconocido';
-      } catch (e) {
-        return 'Desconocido';
-      }
-    }
+    String getUserName(String? userId) => _getUserNameFromList(userId, users);
 
     // Preparar widgets para el PDF de manera más eficiente
     final List<pw.Widget> pdfWidgets = [
@@ -229,14 +197,18 @@ class PDFDownloadHelper {
         ),
         _buildPDFInfoRow(
           'Estado',
-          _translateStatus(report['status']?.toString()),
+          DataHelpers.translateStatus(report['status']?.toString()),
         ),
         _buildPDFInfoRow(
           'Tipo de Trabajo',
           report['typeOfWork']?.toString() ?? 'N/A',
         ),
-        _buildPDFInfoRow('Fecha de Inicio', _formatTime(report['startTime'])),
-        _buildPDFInfoRow('Fecha de Fin', _formatTime(report['endTime'])),
+        _buildPDFInfoRow('Fecha de Inicio', DataHelpers.formatTime(report['startTime'])),
+        _buildPDFInfoRow('Fecha de Fin', DataHelpers.formatTime(report['endTime'])),
+        _buildPDFInfoRow(
+          'Tiempo Total',
+          DataHelpers.calculateWorkingTime(report['startTime'], report['endTime']),
+        ),
         _buildPDFInfoRow(
           'Conectividad',
           report['connectivity']?.toString() ?? 'N/A',
@@ -250,7 +222,7 @@ class PDFDownloadHelper {
     if (location != null) {
       pdfWidgets.addAll([
         _buildPDFInfoSection('Ubicación', [
-          _buildPDFInfoRow('Coordenadas', _getLocationText(location) ?? 'N/A'),
+          _buildPDFInfoRow('Coordenadas', DataHelpers.getLocationText(location) ?? 'N/A'),
         ]),
         pw.SizedBox(height: 16),
       ]);
@@ -465,22 +437,25 @@ class PDFDownloadHelper {
     final List<pw.Widget> imageWidgets = [];
 
     // Usar las imágenes pre-descargadas de manera más eficiente
-    for (int i = 0; i < imageBytes.length && i < 3; i++) {
-      // Limitar a 3 imágenes máximo
+    for (int i = 0; i < imageBytes.length && i < 4; i++) {
+      // Limitar a 4 imágenes máximo para mejor distribución
       try {
-        final image = pw.MemoryImage(Uint8List.fromList(imageBytes[i]));
-        imageWidgets.add(
-          pw.Container(
-            width: 100, // Reducir tamaño
-            height: 100, // Reducir tamaño
-            margin: const pw.EdgeInsets.all(3), // Reducir margen
-            decoration: pw.BoxDecoration(
-              border: pw.Border.all(color: PdfColors.grey300),
-              borderRadius: pw.BorderRadius.circular(6), // Reducir radio
+        // Verificar que los bytes de la imagen sean válidos
+        if (imageBytes[i].isNotEmpty) {
+          final image = pw.MemoryImage(Uint8List.fromList(imageBytes[i]));
+          imageWidgets.add(
+            pw.Container(
+              width: 120,
+              height: 120,
+              margin: const pw.EdgeInsets.all(4),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.grey300),
+                borderRadius: pw.BorderRadius.circular(8),
+              ),
+              child: pw.Image(image, fit: pw.BoxFit.cover),
             ),
-            child: pw.Image(image, fit: pw.BoxFit.cover),
-          ),
-        );
+          );
+        }
       } catch (e) {
         // Si falla cargar la imagen, continuar con la siguiente
         continue;
@@ -489,11 +464,7 @@ class PDFDownloadHelper {
 
     return _buildPDFInfoSection('Imágenes del Trabajo', [
       if (imageWidgets.isNotEmpty) ...[
-        pw.Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: imageWidgets,
-        ), // Reducir espaciado
+        pw.Wrap(spacing: 8, runSpacing: 8, children: imageWidgets),
       ] else ...[
         pw.Text(
           'Las imágenes no pudieron cargarse.',
@@ -507,33 +478,6 @@ class PDFDownloadHelper {
     ]);
   }
 
-  static String? _getLocationText(dynamic location) {
-    if (location == null) return null;
-
-    try {
-      // If location is a string (coordinates)
-      if (location is String) {
-        return location;
-      }
-
-      // If location is a map with address field
-      if (location is Map<String, dynamic>) {
-        if (location.containsKey('address')) {
-          return location['address']?.toString();
-        }
-        // If it has lat/lng coordinates, format them
-        if (location.containsKey('lat') && location.containsKey('lng')) {
-          return '${location['lat']}, ${location['lng']}';
-        }
-        // Return the string representation
-        return location.toString();
-      }
-
-      return location.toString();
-    } catch (e) {
-      return location.toString();
-    }
-  }
 
   static pw.Widget _buildPDFInfoSection(
     String title,
@@ -587,26 +531,4 @@ class PDFDownloadHelper {
     );
   }
 
-  static String _translateStatus(String? status) {
-    switch (status) {
-      case 'pending':
-        return 'Pendiente';
-      case 'in_progress':
-        return 'En Progreso';
-      case 'completed':
-        return 'Completado';
-      default:
-        return status ?? 'N/A';
-    }
-  }
-
-  static String _formatTime(dynamic time) {
-    if (time == null) return 'N/A';
-    try {
-      final date = DateTime.parse(time.toString());
-      return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-    } catch (e) {
-      return time.toString();
-    }
-  }
 }

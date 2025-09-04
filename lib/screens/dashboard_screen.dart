@@ -43,6 +43,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadDashboardData() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _error = null;
@@ -77,14 +78,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _calculateGeneralStatus();
       }
 
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _error = 'Error al cargar los datos: $e';
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _error = 'Error al cargar los datos: $e';
+        });
+      }
     }
   }
 
@@ -818,7 +823,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       },
     );
 
-    if (picked != null) {
+    if (picked != null && mounted) {
       setState(() {
         _startDate = picked.start;
         _endDate = picked.end;

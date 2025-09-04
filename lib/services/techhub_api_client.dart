@@ -243,6 +243,7 @@ class TechHubApiClient {
     }
   }
 
+
   // Report endpoints
   static Future<ApiResponse<ReportResponse>> createReport({
     required String userId,
@@ -275,6 +276,7 @@ class TechHubApiClient {
     String? typeOfWork,
     String? location,
     String? connectivity,
+    String? cameraName,
     String? db,
     String? buffers,
     String? bufferColor,
@@ -293,6 +295,7 @@ class TechHubApiClient {
       if (typeOfWork != null) body['typeOfWork'] = typeOfWork;
       if (location != null) body['location'] = location;
       if (connectivity != null) body['connectivity'] = connectivity;
+      if (cameraName != null) body['cameraName'] = cameraName;
       if (db != null) body['db'] = db;
       if (buffers != null) body['buffers'] = buffers;
       if (bufferColor != null) body['bufferColor'] = bufferColor;
@@ -328,6 +331,7 @@ class TechHubApiClient {
     String? endTime,
     String? location,
     String? connectivity,
+    String? cameraName,
     String? db,
     String? buffers,
     String? bufferColor,
@@ -355,6 +359,7 @@ class TechHubApiClient {
         if (endTime != null) request.fields['endTime'] = endTime;
         if (location != null) request.fields['location'] = location;
         if (connectivity != null) request.fields['connectivity'] = connectivity;
+        if (cameraName != null) request.fields['cameraName'] = cameraName;
         if (db != null) request.fields['db'] = db;
         if (buffers != null) request.fields['buffers'] = buffers;
         if (bufferColor != null) request.fields['bufferColor'] = bufferColor;

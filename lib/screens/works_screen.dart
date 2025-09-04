@@ -9,6 +9,8 @@ import '../auth_manager.dart';
 import '../services/techhub_api_client.dart';
 import '../services/api_response.dart';
 import '../utils/pdf_download_helper.dart';
+import '../utils/data_helpers.dart';
+import '../utils/map_utils.dart';
 import 'create_report_screen.dart';
 
 class WorksScreen extends StatefulWidget {
@@ -30,6 +32,9 @@ class _WorksScreenState extends State<WorksScreen> {
   bool _isShowingErrorDialog = false;
   String _selectedStatus = 'in_progress'; // pending, in_progress, completed
   String _selectedSection = 'remitos'; // tareas, remitos
+
+  // MapController para gestionar el ciclo de vida del mapa
+  MapController? _mapController;
 
   // Cache para usuarios para evitar múltiples llamadas
   List<Map<String, dynamic>> _users = [];
@@ -53,6 +58,7 @@ class _WorksScreenState extends State<WorksScreen> {
   @override
   void initState() {
     super.initState();
+    _mapController = MapController();
     _loadData();
     _searchController.addListener(_onSearchChanged);
   }
@@ -60,6 +66,7 @@ class _WorksScreenState extends State<WorksScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    MapUtils.safeDisposeMapController(_mapController);
     super.dispose();
   }
 
@@ -434,7 +441,6 @@ class _WorksScreenState extends State<WorksScreen> {
       }
     } catch (e) {
       // Silenciar errores de carga de usuarios para no interrumpir la funcionalidad principal
-      debugPrint('Error loading users: $e');
     }
   }
 
@@ -454,62 +460,19 @@ class _WorksScreenState extends State<WorksScreen> {
       }
     } catch (e) {
       // Silenciar errores de carga de inventario para no interrumpir la funcionalidad principal
-      debugPrint('Error loading inventory: $e');
     }
   }
 
   String _getUserNameById(String userId) {
-    if (!_isUsersLoaded || _users.isEmpty) {
-      return 'Cargando...';
-    }
-
-    final user = _users.firstWhere(
-      (user) =>
-          user['_id']?.toString() == userId ||
-          user['userId']?.toString() == userId,
-      orElse: () => <String, dynamic>{},
-    );
-
-    return user.isNotEmpty ? _extractUserName(user) : 'Usuario desconocido';
-  }
-
-  String _extractUserName(Map<String, dynamic> user) {
-    // Usar directamente name y surname si están disponibles
-    final name = user['name']?.toString().trim() ?? '';
-    final surname = user['surname']?.toString().trim() ?? '';
-
-    if (name.isNotEmpty && surname.isNotEmpty) {
-      return '$name $surname';
-    } else if (name.isNotEmpty) {
-      return name;
-    } else if (surname.isNotEmpty) {
-      return surname;
-    }
-
-    // Fallback a otros campos comunes
-    final fullName = user['fullName']?.toString().trim();
-    if (fullName?.isNotEmpty == true) {
-      return fullName!;
-    }
-
-    return 'Usuario desconocido';
+    return !_isUsersLoaded || _users.isEmpty 
+      ? 'Cargando...'
+      : DataHelpers.getUserNameById(userId, _users);
   }
 
   String _getMaterialNameById(String materialId) {
-    if (!_isInventoryLoaded || _inventory.isEmpty) {
-      return 'Cargando...';
-    }
-
-    final material = _inventory.firstWhere(
-      (material) => material['_id']?.toString() == materialId,
-      orElse: () => <String, dynamic>{},
-    );
-
-    if (material.isNotEmpty) {
-      return material['name']?.toString() ?? 'Material desconocido';
-    }
-
-    return 'Material desconocido';
+    return !_isInventoryLoaded || _inventory.isEmpty
+      ? 'Cargando...'
+      : DataHelpers.getMaterialNameById(materialId, _inventory);
   }
 
   Future<void> _searchData() async {
@@ -1416,36 +1379,7 @@ class _WorksScreenState extends State<WorksScreen> {
     }
   }
 
-  String _formatDate(dynamic dateValue) {
-    if (dateValue == null) return 'Sin fecha';
-    try {
-      DateTime date;
-      if (dateValue is DateTime) {
-        date = dateValue;
-      } else if (dateValue is Map && dateValue['\$date'] != null) {
-        date = DateTime.parse(dateValue['\$date']);
-      } else if (dateValue is String) {
-        date = DateTime.parse(dateValue);
-      } else {
-        return 'Sin fecha';
-      }
-
-      final now = DateTime.now();
-      final difference = now.difference(date);
-
-      if (difference.inDays == 0) {
-        return 'Hoy';
-      } else if (difference.inDays == 1) {
-        return 'Ayer';
-      } else if (difference.inDays < 7) {
-        return 'Hace ${difference.inDays} días';
-      } else {
-        return '${date.day}/${date.month}/${date.year}';
-      }
-    } catch (e) {
-      return 'Sin fecha';
-    }
-  }
+  String _formatDate(dynamic dateValue) => DataHelpers.formatDate(dateValue);
 
   String _getTaskTitle(Map<String, dynamic> task) {
     if (_selectedSection == 'remitos') {
@@ -1459,25 +1393,7 @@ class _WorksScreenState extends State<WorksScreen> {
     return task['title']?.toString() ?? 'Sin título';
   }
 
-  String? _getLocationText(dynamic location) {
-    if (location == null) return null;
-
-    final locationStr = location.toString();
-    // Check if it's coordinates (contains comma and numbers)
-    if (locationStr.contains(',') && locationStr.contains('-')) {
-      final parts = locationStr.split(',');
-      if (parts.length == 2) {
-        try {
-          final lat = double.parse(parts[0].trim());
-          final lng = double.parse(parts[1].trim());
-          return '${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}';
-        } catch (e) {
-          return locationStr;
-        }
-      }
-    }
-    return locationStr;
-  }
+  String? _getLocationText(dynamic location) => DataHelpers.getLocationText(location);
 
   void _showTaskDetail(Map<String, dynamic> task) async {
     final taskToShow = task;
@@ -1950,6 +1866,21 @@ class _WorksScreenState extends State<WorksScreen> {
       );
     }
 
+    // Tiempo total trabajado
+    if (taskToShow['startTime'] != null && taskToShow['endTime'] != null) {
+      details.add(
+        _buildDetailRow(
+          'Tiempo Total',
+          DataHelpers.calculateWorkingTime(
+            taskToShow['startTime'],
+            taskToShow['endTime'],
+          ),
+          LucideIcons.clock,
+          Colors.blue.shade600,
+        ),
+      );
+    }
+
     if (taskToShow['toDo'] != null &&
         taskToShow['toDo'].toString().isNotEmpty) {
       details.add(_buildDescriptionCard(taskToShow['toDo'].toString()));
@@ -2093,18 +2024,7 @@ class _WorksScreenState extends State<WorksScreen> {
     );
   }
 
-  String _translateStatus(String? status) {
-    switch (status) {
-      case 'pending':
-        return 'Pendiente';
-      case 'in_progress':
-        return 'En Proceso';
-      case 'completed':
-        return 'Completada';
-      default:
-        return 'Desconocido';
-    }
-  }
+  String _translateStatus(String? status) => DataHelpers.translateStatus(status);
 
   IconData _getStatusIcon(String statusText) {
     if (statusText.toLowerCase().contains('pendiente')) {
@@ -2128,30 +2048,7 @@ class _WorksScreenState extends State<WorksScreen> {
     return Colors.grey;
   }
 
-  String _formatTime(dynamic timeValue) {
-    if (timeValue == null) return 'N/A';
-    try {
-      DateTime time;
-      if (timeValue is DateTime) {
-        time = timeValue;
-      } else if (timeValue is String) {
-        time = DateTime.parse(timeValue);
-      } else if (timeValue is Map && timeValue['\$date'] != null) {
-        time = DateTime.parse(timeValue['\$date']);
-      } else {
-        return 'N/A';
-      }
-
-      // Formato con fecha y hora
-      final dateStr =
-          '${time.day.toString().padLeft(2, '0')}/${time.month.toString().padLeft(2, '0')}/${time.year}';
-      final timeStr =
-          '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
-      return '$dateStr $timeStr';
-    } catch (e) {
-      return 'N/A';
-    }
-  }
+  String _formatTime(dynamic timeValue) => DataHelpers.formatTime(timeValue);
 
   /// Widget para mostrar la sección de materiales/suministros
   Widget _buildSuppliesSection(List<dynamic> supplies) {
@@ -2526,24 +2423,7 @@ class _WorksScreenState extends State<WorksScreen> {
     );
   }
 
-  bool _hasLocationCoordinates(String? location) {
-    if (location == null) return false;
-
-    final locationStr = location.toString();
-    if (locationStr.contains(',') && locationStr.contains('-')) {
-      final parts = locationStr.split(',');
-      if (parts.length == 2) {
-        try {
-          final lat = double.parse(parts[0].trim());
-          final lng = double.parse(parts[1].trim());
-          return lat.abs() > 0.0001 && lng.abs() > 0.0001;
-        } catch (e) {
-          return false;
-        }
-      }
-    }
-    return false;
-  }
+  bool _hasLocationCoordinates(String? location) => DataHelpers.hasLocationCoordinates(location);
 
   Widget _buildMapSection(String location) {
     final parts = location.split(',');
@@ -2568,102 +2448,103 @@ class _WorksScreenState extends State<WorksScreen> {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: Stack(
-              children: [
-                FlutterMap(
-                  options: MapOptions(
-                    initialCenter: LatLng(lat, lng),
-                    initialZoom: 16.0,
-                    maxZoom: 18.0,
-                    minZoom: 5.0,
-                    interactionOptions: const InteractionOptions(
-                      flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+            child: _buildOptimizedMapWidget(
+              lat: lat,
+              lng: lng,
+              mapController: _mapController,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Widget optimizado para el mapa que previene problemas de cache
+  Widget _buildOptimizedMapWidget({
+    required double lat,
+    required double lng,
+    MapController? mapController,
+  }) {
+    return Stack(
+      children: [
+        FlutterMap(
+          mapController: mapController,
+          options: MapUtils.createOptimizedMapOptions(lat: lat, lng: lng),
+          children: [
+            MapUtils.createOptimizedTileLayer(),
+            MarkerLayer(
+              markers: [
+                Marker(
+                  point: LatLng(lat, lng),
+                  width: 50,
+                  height: 50,
+                  child: Container(
+                    width: 50,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      color: Colors.purple.shade600,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 3),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.purple.withValues(alpha: 0.4),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        ),
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.2),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      LucideIcons.mapPin,
+                      color: Colors.white,
+                      size: 26,
                     ),
                   ),
-                  children: [
-                    TileLayer(
-                      urlTemplate:
-                          'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-                      subdomains: const ['a', 'b', 'c', 'd'],
-                      userAgentPackageName: 'com.example.techhub_mobile',
-                    ),
-                    MarkerLayer(
-                      markers: [
-                        Marker(
-                          point: LatLng(lat, lng),
-                          width: 50,
-                          height: 50,
-                          child: Container(
-                            width: 50,
-                            height: 50,
-                            decoration: BoxDecoration(
-                              color: Colors.purple.shade600,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 3),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.purple.withValues(alpha: 0.4),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 4),
-                                ),
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.2),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: const Icon(
-                              LucideIcons.mapPin,
-                              color: Colors.white,
-                              size: 26,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
                 ),
-                Positioned(
-                  bottom: 12,
-                  left: 12,
-                  right: 12,
+              ],
+            ),
+          ],
+        ),
+        Positioned(
+          bottom: 12,
+          left: 12,
+          right: 12,
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 8,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.8),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => _copyLocation(context, lat, lng),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
+                    padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.8),
-                      borderRadius: BorderRadius.circular(8),
+                      color: Colors.purple.shade600,
+                      borderRadius: BorderRadius.circular(6),
                     ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                        GestureDetector(
-                          onTap: () => _copyLocation(context, lat, lng),
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: Colors.purple.shade600,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Icon(
-                              LucideIcons.copy,
-                              color: Colors.white,
-                              size: 14,
-                            ),
-                          ),
-                        ),
-                      ],
+                    child: const Icon(
+                      LucideIcons.copy,
+                      color: Colors.white,
+                      size: 14,
                     ),
                   ),
                 ),
@@ -2740,12 +2621,15 @@ class _WorksScreenState extends State<WorksScreen> {
             ),
       );
 
+      // Preparar datos para el PDF
+      final imageUrls = report['imagesUrl'] ?? [];
+
       // Usar el nuevo helper que maneja las plataformas correctamente
       final result = await PDFDownloadHelper.generatePDFInBackground(
         data: {
           'report': report,
           'users': _users,
-          'imageUrls': report['imagesUrl'] ?? [],
+          'imageUrls': imageUrls,
           'inventory': _inventory,
         },
       );
