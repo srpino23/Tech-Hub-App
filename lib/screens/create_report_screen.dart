@@ -409,16 +409,13 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   }
 
   Future<void> _loadCameras() async {
-    print('DEBUG: _loadCameras() iniciado');
     if (!mounted) return;
     setState(() {
       _isLoadingCameras = true;
     });
 
     try {
-      print('DEBUG: Llamando a AnalyzerApiClient.getCameras()');
       final response = await AnalyzerApiClient.getCameras();
-      print('DEBUG: Respuesta recibida - Success: ${response.isSuccess}, Data: ${response.data != null}');
 
       if (response.isSuccess && response.data != null) {
         final allCameras = response.data!;
@@ -426,30 +423,12 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         // Obtener el nombre del team actual para filtrar cámaras
         final currentTeamName = widget.authManager.teamName;
         
-        // Debug: Mostrar información para ayudar a identificar el problema
-        print('DEBUG: Team actual: "$currentTeamName"');
-        print('DEBUG: Total cámaras cargadas: ${allCameras.length}');
-        
-        // Mostrar todas las cámaras y sus liable para debug
-        for (var i = 0; i < allCameras.length && i < 5; i++) {
-          final camera = allCameras[i];
-          print('DEBUG: Cámara ${i + 1}: ${camera['name']} - Liable: "${camera['liable']}"');
-        }
-        
         // Filtrar cámaras por el campo liable que coincida con el team actual
         final teamCameras = allCameras.where((camera) {
           final cameraLiable = camera['liable']?.toString().toLowerCase().trim();
           final teamNameLower = currentTeamName?.toLowerCase().trim();
-          final matches = cameraLiable == teamNameLower;
-          
-          if (!matches && camera['liable'] != null) {
-            print('DEBUG: No match - Cámara: ${camera['name']}, Liable: "$cameraLiable" vs Team: "$teamNameLower"');
-          }
-          
-          return matches;
+          return cameraLiable == teamNameLower;
         }).toList();
-        
-        print('DEBUG: Cámaras filtradas para el team: ${teamCameras.length}');
 
         if (mounted) {
           setState(() {
@@ -457,11 +436,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
             _filteredCameras = teamCameras;
           });
         }
-      } else {
-        print('DEBUG: Error en respuesta - Success: ${response.isSuccess}, Error: ${response.error}');
       }
     } catch (e) {
-      print('DEBUG: Excepción en _loadCameras: $e');
       if (mounted) {
         _showError('Error cargando cámaras: $e');
       }
@@ -2145,8 +2121,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   child: CircularProgressIndicator(),
                 ),
               )
-            else if (_filteredCameras.isEmpty) 
-              // DEBUG: ${print('DEBUG: _filteredCameras.isEmpty = ${_filteredCameras.isEmpty}, _availableCameras.length = ${_availableCameras.length}')}
+            else if (_filteredCameras.isEmpty)
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(

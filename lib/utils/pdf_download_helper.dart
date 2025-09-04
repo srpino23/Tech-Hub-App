@@ -213,6 +213,11 @@ class PDFDownloadHelper {
           'Conectividad',
           report['connectivity']?.toString() ?? 'N/A',
         ),
+        if (report['cameraName'] != null && report['cameraName'].toString().isNotEmpty)
+          _buildPDFInfoRow(
+            'Cámara',
+            report['cameraName'].toString(),
+          ),
       ]),
       pw.SizedBox(height: 16),
     ];

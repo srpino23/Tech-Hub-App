@@ -1844,6 +1844,17 @@ class _WorksScreenState extends State<WorksScreen> {
       );
     }
 
+    if (taskToShow['cameraName'] != null && taskToShow['cameraName'].toString().isNotEmpty) {
+      details.add(
+        _buildDetailRow(
+          'Cámara',
+          taskToShow['cameraName'].toString(),
+          LucideIcons.camera,
+          Colors.purple.shade600,
+        ),
+      );
+    }
+
     if (taskToShow['startTime'] != null) {
       details.add(
         _buildDetailRow(
