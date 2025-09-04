@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import '../auth_manager.dart';
 import '../services/analyzer_api_client.dart';
 
@@ -242,6 +245,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ],
                   ),
                 ),
+                IconButton(
+                  onPressed: _exportOperabilityPDF,
+                  icon: const Icon(LucideIcons.download),
+                  tooltip: 'Exportar PDF',
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.orange.shade50,
+                    foregroundColor: Colors.orange.shade700,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 20),
@@ -439,42 +451,47 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(height: 20),
             sortedLiables.isNotEmpty
                 ? LayoutBuilder(
-                    builder: (context, constraints) {
-                      // Determinar el número de columnas basado en el ancho disponible
-                      final crossAxisCount = constraints.maxWidth > 600 ? 4 : 2;
-                      
-                      // Calcular el ancho máximo para evitar que se estire demasiado
-                      final maxWidth = crossAxisCount * 150.0 + (crossAxisCount - 1) * 8.0 + 40.0; // 150px por carta + espaciado + padding
-                      
-                      return Center(
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxWidth: maxWidth,
-                          ),
-                          child: GridView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: crossAxisCount,
-                              childAspectRatio: 1.0,
-                              crossAxisSpacing: 8,
-                              mainAxisSpacing: 8,
-                            ),
-                            itemCount: sortedLiables.length,
-                            itemBuilder: (context, index) {
-                              return _buildLiablePieChart(sortedLiables[index], index);
-                            },
-                          ),
+                  builder: (context, constraints) {
+                    // Determinar el número de columnas basado en el ancho disponible
+                    final crossAxisCount = constraints.maxWidth > 600 ? 4 : 2;
+
+                    // Calcular el ancho máximo para evitar que se estire demasiado
+                    final maxWidth =
+                        crossAxisCount * 150.0 +
+                        (crossAxisCount - 1) * 8.0 +
+                        40.0; // 150px por carta + espaciado + padding
+
+                    return Center(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: maxWidth),
+                        child: GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: crossAxisCount,
+                                childAspectRatio: 1.0,
+                                crossAxisSpacing: 8,
+                                mainAxisSpacing: 8,
+                              ),
+                          itemCount: sortedLiables.length,
+                          itemBuilder: (context, index) {
+                            return _buildLiablePieChart(
+                              sortedLiables[index],
+                              index,
+                            );
+                          },
                         ),
-                      );
-                    },
-                  )
+                      ),
+                    );
+                  },
+                )
                 : const Center(
-                    child: Text(
-                      'No hay datos de equipos disponibles',
-                      style: TextStyle(color: Colors.grey),
-                    ),
+                  child: Text(
+                    'No hay datos de equipos disponibles',
+                    style: TextStyle(color: Colors.grey),
                   ),
+                ),
           ],
         ),
       ),
@@ -706,12 +723,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   List<PieChartSectionData> _buildGeneralPieChartSections() {
     final sections = <PieChartSectionData>[];
-    final colors = [
-      Colors.green,
-      Colors.orange,
-      Colors.red,
-      Colors.blue,
-    ];
+    final colors = [Colors.green, Colors.orange, Colors.red, Colors.blue];
 
     // Excluir las cámaras retiradas del gráfico
     final operationalStatuses = ['online', 'warning', 'offline', 'maintenance'];
@@ -724,9 +736,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final status = operationalStatuses[i];
       final count = _generalStatus[status]!;
       if (count > 0) {
-        final percentage = totalOperationalCameras > 0 
-            ? ((count / totalOperationalCameras) * 100).round() 
-            : 0;
+        final percentage =
+            totalOperationalCameras > 0
+                ? ((count / totalOperationalCameras) * 100).round()
+                : 0;
         sections.add(
           PieChartSectionData(
             color: colors[i],
@@ -992,7 +1005,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'maintenance': 0,
       'removed': 0,
     };
-    
+
     for (var camera in cameras) {
       final status = camera['status']?.toString().toLowerCase() ?? 'offline';
       if (counts.containsKey(status)) {
@@ -1001,7 +1014,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         counts['offline'] = counts['offline']! + 1;
       }
     }
-    
+
     return counts;
   }
 
@@ -1021,25 +1034,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildLiablePieChart(Map<String, dynamic> liable, int index) {
     final liableName = liable['liable'] ?? 'Equipo desconocido';
-    
+
     // Filtrar cámaras por el liable (equipo responsable)
-    final liableCameras = _cameras.where((camera) {
-      final cameraLiable = camera['liable']?.toString().toLowerCase() ?? '';
-      final targetLiable = liableName.toLowerCase();
-      return cameraLiable == targetLiable;
-    }).toList();
-    
+    final liableCameras =
+        _cameras.where((camera) {
+          final cameraLiable = camera['liable']?.toString().toLowerCase() ?? '';
+          final targetLiable = liableName.toLowerCase();
+          return cameraLiable == targetLiable;
+        }).toList();
+
     // Calcular conteos por estado
     final statusCounts = _calculateStatusCounts(liableCameras);
     final onlineCameras = statusCounts['online'] ?? 0;
     final warningCameras = statusCounts['warning'] ?? 0;
     final offlineCameras = statusCounts['offline'] ?? 0;
     final maintenanceCameras = statusCounts['maintenance'] ?? 0;
-    
+
     // Excluir las cámaras retiradas del total operacional
-    final operationalCameras = onlineCameras + warningCameras + offlineCameras + maintenanceCameras;
-    final percentage = operationalCameras > 0 ? ((onlineCameras / operationalCameras) * 100).round() : 0;
-    
+    final operationalCameras =
+        onlineCameras + warningCameras + offlineCameras + maintenanceCameras;
+    final percentage =
+        operationalCameras > 0
+            ? ((onlineCameras / operationalCameras) * 100).round()
+            : 0;
+
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -1049,38 +1067,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: [
             Text(
               liableName,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 4),
             Expanded(
-              child: operationalCameras > 0
-                  ? PieChart(
-                      PieChartData(
-                        sections: _buildLiablePieChartSections({
-                          'onlineCameras': onlineCameras,
-                          'warningCameras': warningCameras,
-                          'offlineCameras': offlineCameras,
-                          'maintenanceCameras': maintenanceCameras,
-                        }),
-                        centerSpaceRadius: 15,
-                        sectionsSpace: 1,
-                      ),
-                    )
-                  : const Center(
-                      child: Text(
-                        'Sin datos',
-                        style: TextStyle(
-                          color: Colors.grey,
-                          fontSize: 10,
+              child:
+                  operationalCameras > 0
+                      ? PieChart(
+                        PieChartData(
+                          sections: _buildLiablePieChartSections({
+                            'onlineCameras': onlineCameras,
+                            'warningCameras': warningCameras,
+                            'offlineCameras': offlineCameras,
+                            'maintenanceCameras': maintenanceCameras,
+                          }),
+                          centerSpaceRadius: 15,
+                          sectionsSpace: 1,
+                        ),
+                      )
+                      : const Center(
+                        child: Text(
+                          'Sin datos',
+                          style: TextStyle(color: Colors.grey, fontSize: 10),
                         ),
                       ),
-                    ),
             ),
             const SizedBox(height: 2),
             Text(
@@ -1094,10 +1107,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             Text(
               '($onlineCameras/$operationalCameras)',
-              style: TextStyle(
-                fontSize: 9,
-                color: Colors.grey.shade500,
-              ),
+              style: TextStyle(fontSize: 9, color: Colors.grey.shade500),
               textAlign: TextAlign.center,
             ),
           ],
@@ -1106,24 +1116,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  List<PieChartSectionData> _buildLiablePieChartSections(Map<String, dynamic> liable) {
+  List<PieChartSectionData> _buildLiablePieChartSections(
+    Map<String, dynamic> liable,
+  ) {
     final sections = <PieChartSectionData>[];
     final colors = [Colors.green, Colors.orange, Colors.red, Colors.blue];
-    
+
     final onlineCameras = liable['onlineCameras'] ?? 0;
     final warningCameras = liable['warningCameras'] ?? 0;
     final offlineCameras = liable['offlineCameras'] ?? 0;
     final maintenanceCameras = liable['maintenanceCameras'] ?? 0;
-    
-    final values = [onlineCameras, warningCameras, offlineCameras, maintenanceCameras];
-    final operationalTotal = values.fold<int>(0, (sum, value) => sum + (value as int));
-    
+
+    final values = [
+      onlineCameras,
+      warningCameras,
+      offlineCameras,
+      maintenanceCameras,
+    ];
+    final operationalTotal = values.fold<int>(
+      0,
+      (sum, value) => sum + (value as int),
+    );
+
     for (int i = 0; i < values.length; i++) {
       final count = values[i];
       if (count > 0) {
-        final percentage = operationalTotal > 0 
-            ? ((count / operationalTotal) * 100).round() 
-            : 0;
+        final percentage =
+            operationalTotal > 0
+                ? ((count / operationalTotal) * 100).round()
+                : 0;
         sections.add(
           PieChartSectionData(
             color: colors[i],
@@ -1139,8 +1160,608 @@ class _DashboardScreenState extends State<DashboardScreen> {
         );
       }
     }
-    
+
     return sections;
   }
 
+  // Función para exportar PDF profesional con páginas separadas
+  Future<void> _exportOperabilityPDF() async {
+    try {
+      // Mostrar indicador de carga
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder:
+            (context) => const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(color: Colors.orange),
+                  SizedBox(height: 16),
+                  Text(
+                    'Generando reporte PDF...',
+                    style: TextStyle(color: Colors.orange, fontSize: 16),
+                  ),
+                ],
+              ),
+            ),
+      );
+
+      // Crear PDF profesional
+      final pdf = pw.Document();
+
+      // Página 1: Portada
+      pdf.addPage(_buildCoverPage());
+
+      // Página 2: Operatividad General
+      pdf.addPage(_buildGeneralOperabilityPage());
+
+      // Página 3: Operatividad por Equipo
+      pdf.addPage(_buildLiableOperabilityPage());
+
+      // Cerrar dialog de carga
+      Navigator.of(context).pop();
+
+      // Mostrar PDF
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => pdf.save(),
+        name:
+            'Reporte_Operatividad_TechHub_${DateTime.now().millisecondsSinceEpoch}.pdf',
+      );
+    } catch (e) {
+      // Cerrar dialog si está abierto
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+
+      // Mostrar error
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al exportar PDF: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // Página de portada
+  pw.Page _buildCoverPage() {
+    return pw.Page(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.all(40),
+      build: (pw.Context context) {
+        return pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.center,
+          mainAxisAlignment: pw.MainAxisAlignment.center,
+          children: [
+            // Título principal
+            pw.Container(
+              padding: const pw.EdgeInsets.all(20),
+              decoration: pw.BoxDecoration(
+                color: PdfColors.orange100,
+                borderRadius: pw.BorderRadius.circular(20),
+              ),
+              child: pw.Text(
+                'TechHub',
+                style: pw.TextStyle(
+                  fontSize: 48,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.orange800,
+                ),
+              ),
+            ),
+
+            pw.SizedBox(height: 40),
+
+            // Título del reporte
+            pw.Text(
+              'Reporte de Operatividad',
+              style: pw.TextStyle(
+                fontSize: 32,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.grey800,
+              ),
+            ),
+
+            pw.SizedBox(height: 20),
+
+            // Subtítulo
+            pw.Text(
+              'Sistema de Monitoreo de Cámaras',
+              style: pw.TextStyle(fontSize: 18, color: PdfColors.grey600),
+            ),
+
+            pw.SizedBox(height: 60),
+
+            // Información del reporte
+            pw.Container(
+              padding: const pw.EdgeInsets.all(24),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.grey300, width: 1),
+                borderRadius: pw.BorderRadius.circular(12),
+              ),
+              child: pw.Column(
+                children: [
+                  pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Text(
+                        'Fecha de generación:',
+                        style: pw.TextStyle(
+                          fontSize: 14,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                      ),
+                      pw.Text(
+                        _formatDate(DateTime.now()),
+                        style: const pw.TextStyle(fontSize: 14),
+                      ),
+                    ],
+                  ),
+                  pw.SizedBox(height: 12),
+                  pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Text(
+                        'Total de cámaras:',
+                        style: pw.TextStyle(
+                          fontSize: 14,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                      ),
+                      pw.Text(
+                        '${_cameras.length}',
+                        style: const pw.TextStyle(fontSize: 14),
+                      ),
+                    ],
+                  ),
+                  pw.SizedBox(height: 12),
+                  pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Text(
+                        'Operatividad general:',
+                        style: pw.TextStyle(
+                          fontSize: 14,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                      ),
+                      pw.Text(
+                        '${_getGeneralOperabilityPercentage().round()}%',
+                        style: pw.TextStyle(
+                          fontSize: 14,
+                          color: PdfColors.orange800,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            pw.Expanded(child: pw.SizedBox()),
+          ],
+        );
+      },
+    );
+  }
+
+  // Página de operatividad general
+  pw.Page _buildGeneralOperabilityPage() {
+    final totalOperationalCameras = _getTotalOperationalCameras();
+
+    return pw.Page(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.all(40),
+      build: (pw.Context context) {
+        return pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            // Header de la página
+            pw.Text(
+              'Operatividad General',
+              style: pw.TextStyle(
+                fontSize: 32,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.grey800,
+              ),
+            ),
+            pw.SizedBox(height: 8),
+            pw.Text(
+              '${_getGeneralOperabilityPercentage().round()}% del sistema operativo',
+              style: pw.TextStyle(
+                fontSize: 18,
+                color: PdfColors.orange700,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+
+            pw.SizedBox(height: 40),
+
+            // Contenido principal - estadísticas detalladas
+            pw.Text(
+              'Distribución por Estado',
+              style: pw.TextStyle(
+                fontSize: 22,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.grey700,
+              ),
+            ),
+
+            pw.SizedBox(height: 24),
+
+            // Estadísticas en lista
+            _buildPDFStatItem(
+              'En línea',
+              _generalStatus['online']!,
+              PdfColors.green,
+              totalOperationalCameras,
+            ),
+            pw.SizedBox(height: 16),
+
+            _buildPDFStatItem(
+              'Advertencia',
+              _generalStatus['warning']!,
+              PdfColors.orange,
+              totalOperationalCameras,
+            ),
+            pw.SizedBox(height: 16),
+
+            _buildPDFStatItem(
+              'Fuera de línea',
+              _generalStatus['offline']!,
+              PdfColors.red,
+              totalOperationalCameras,
+            ),
+            pw.SizedBox(height: 16),
+
+            _buildPDFStatItem(
+              'Mantenimiento',
+              _generalStatus['maintenance']!,
+              PdfColors.blue,
+              totalOperationalCameras,
+            ),
+            pw.SizedBox(height: 16),
+
+            _buildPDFStatItemSimple(
+              'Retirada',
+              _generalStatus['removed']!,
+              PdfColors.grey,
+            ),
+
+            pw.SizedBox(height: 32),
+            pw.Divider(color: PdfColors.grey300, thickness: 2),
+            pw.SizedBox(height: 16),
+
+            _buildPDFStatItemSimple(
+              'Total Operacional',
+              totalOperationalCameras,
+              PdfColors.grey800,
+            ),
+
+            pw.Expanded(child: pw.SizedBox()),
+
+            // Footer con resumen
+            pw.Container(
+              padding: const pw.EdgeInsets.all(20),
+              decoration: pw.BoxDecoration(
+                color: PdfColors.grey100,
+                borderRadius: pw.BorderRadius.circular(12),
+              ),
+              child: pw.Column(
+                children: [
+                  pw.Text(
+                    'Resumen Ejecutivo',
+                    style: pw.TextStyle(
+                      fontSize: 16,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.grey800,
+                    ),
+                  ),
+                  pw.SizedBox(height: 8),
+                  pw.Text(
+                    'Del total de ${_cameras.length} cámaras en el sistema, $totalOperationalCameras están operacionales. ' +
+                        'El ${_getGeneralOperabilityPercentage().round()}% del sistema se encuentra funcionando correctamente.',
+                    style: pw.TextStyle(fontSize: 14, color: PdfColors.grey700),
+                    textAlign: pw.TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Página de operatividad por equipo
+  pw.Page _buildLiableOperabilityPage() {
+    final sortedLiables = List<Map<String, dynamic>>.from(_liableOperability)
+      ..sort(
+        (a, b) => (a['liable'] ?? '').toString().toLowerCase().compareTo(
+          (b['liable'] ?? '').toString().toLowerCase(),
+        ),
+      );
+
+    return pw.Page(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.all(40),
+      build: (pw.Context context) {
+        return pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            // Header de la página
+            pw.Text(
+              'Operatividad por Equipo',
+              style: pw.TextStyle(
+                fontSize: 32,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.grey800,
+              ),
+            ),
+            pw.SizedBox(height: 8),
+            pw.Text(
+              'Análisis detallado por equipo responsable',
+              style: pw.TextStyle(
+                fontSize: 18,
+                color: PdfColors.purple700,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+
+            pw.SizedBox(height: 30),
+
+            // Lista de equipos
+            if (sortedLiables.isNotEmpty)
+              pw.Expanded(
+                child: pw.Column(
+                  children:
+                      sortedLiables
+                          .take(15)
+                          .map(
+                            (liable) => pw.Container(
+                              margin: const pw.EdgeInsets.only(bottom: 12),
+                              child: _buildPDFLiableRow(liable),
+                            ),
+                          )
+                          .toList(),
+                ),
+              )
+            else
+              pw.Expanded(
+                child: pw.Center(
+                  child: pw.Text(
+                    'No hay datos de equipos disponibles',
+                    style: pw.TextStyle(
+                      fontSize: 18,
+                      color: PdfColors.grey500,
+                      fontStyle: pw.FontStyle.italic,
+                    ),
+                  ),
+                ),
+              ),
+
+            // Leyenda de colores
+            pw.Container(
+              padding: const pw.EdgeInsets.all(16),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.grey300),
+                borderRadius: pw.BorderRadius.circular(8),
+              ),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+                children: [
+                  _buildPDFLegendItem('En línea', PdfColors.green),
+                  _buildPDFLegendItem('Advertencia', PdfColors.orange),
+                  _buildPDFLegendItem('Fuera de línea', PdfColors.red),
+                  _buildPDFLegendItem('Mantenimiento', PdfColors.blue),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Helper para crear items de estadísticas con porcentaje
+  pw.Widget _buildPDFStatItem(
+    String label,
+    int count,
+    PdfColor color,
+    int total,
+  ) {
+    final percentage = total > 0 ? ((count / total) * 100).round() : 0;
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(16),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: color.shade(0.3), width: 2),
+        borderRadius: pw.BorderRadius.circular(8),
+        color: color.shade(0.1),
+      ),
+      child: pw.Row(
+        children: [
+          pw.Expanded(
+            child: pw.Text(
+              label,
+              style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+            ),
+          ),
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.end,
+            children: [
+              pw.Text(
+                '$count cámaras',
+                style: pw.TextStyle(
+                  fontSize: 16,
+                  fontWeight: pw.FontWeight.bold,
+                  color: color,
+                ),
+              ),
+              pw.Text(
+                '$percentage%',
+                style: pw.TextStyle(fontSize: 14, color: PdfColors.grey600),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helper para crear items simples de estadísticas
+  pw.Widget _buildPDFStatItemSimple(String label, int count, PdfColor color) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(16),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: color.shade(0.3), width: 2),
+        borderRadius: pw.BorderRadius.circular(8),
+        color: color.shade(0.1),
+      ),
+      child: pw.Row(
+        children: [
+          pw.Expanded(
+            child: pw.Text(
+              label,
+              style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+            ),
+          ),
+          pw.Text(
+            '$count cámaras',
+            style: pw.TextStyle(
+              fontSize: 16,
+              fontWeight: pw.FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helper para crear filas de equipos en PDF
+  pw.Widget _buildPDFLiableRow(Map<String, dynamic> liable) {
+    final liableName = liable['liable'] ?? 'Equipo desconocido';
+
+    // Filtrar cámaras por el liable
+    final liableCameras =
+        _cameras.where((camera) {
+          final cameraLiable = camera['liable']?.toString().toLowerCase() ?? '';
+          final targetLiable = liableName.toLowerCase();
+          return cameraLiable == targetLiable;
+        }).toList();
+
+    final statusCounts = _calculateStatusCounts(liableCameras);
+    final onlineCameras = statusCounts['online'] ?? 0;
+    final warningCameras = statusCounts['warning'] ?? 0;
+    final offlineCameras = statusCounts['offline'] ?? 0;
+    final maintenanceCameras = statusCounts['maintenance'] ?? 0;
+
+    final operationalCameras =
+        onlineCameras + warningCameras + offlineCameras + maintenanceCameras;
+    final percentage =
+        operationalCameras > 0
+            ? ((onlineCameras / operationalCameras) * 100).round()
+            : 0;
+
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(16),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey300, width: 1),
+        borderRadius: pw.BorderRadius.circular(8),
+        color: PdfColors.grey50,
+      ),
+      child: pw.Row(
+        children: [
+          // Nombre del equipo
+          pw.Expanded(
+            flex: 3,
+            child: pw.Text(
+              liableName,
+              style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+            ),
+          ),
+
+          // Estadísticas en línea
+          pw.Expanded(
+            flex: 2,
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+              children: [
+                _buildPDFMiniStat('En línea', onlineCameras, PdfColors.green),
+                _buildPDFMiniStat(
+                  'Advertencia',
+                  warningCameras,
+                  PdfColors.orange,
+                ),
+                _buildPDFMiniStat('Fuera', offlineCameras, PdfColors.red),
+                _buildPDFMiniStat('Mant.', maintenanceCameras, PdfColors.blue),
+              ],
+            ),
+          ),
+
+          // Porcentaje total
+          pw.Container(
+            padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: pw.BoxDecoration(
+              color:
+                  percentage >= 80
+                      ? PdfColors.green.shade(0.2)
+                      : percentage >= 50
+                      ? PdfColors.orange.shade(0.2)
+                      : PdfColors.red.shade(0.2),
+              borderRadius: pw.BorderRadius.circular(6),
+              border: pw.Border.all(
+                color:
+                    percentage >= 80
+                        ? PdfColors.green
+                        : percentage >= 50
+                        ? PdfColors.orange
+                        : PdfColors.red,
+                width: 1,
+              ),
+            ),
+            child: pw.Text(
+              '$percentage%',
+              style: pw.TextStyle(
+                fontSize: 14,
+                fontWeight: pw.FontWeight.bold,
+                color:
+                    percentage >= 80
+                        ? PdfColors.green
+                        : percentage >= 50
+                        ? PdfColors.orange
+                        : PdfColors.red,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helper para mini estadísticas
+  pw.Widget _buildPDFMiniStat(String label, int count, PdfColor color) {
+    return pw.Text(
+      '$count',
+      style: pw.TextStyle(
+        fontSize: 12,
+        fontWeight: pw.FontWeight.bold,
+        color: color,
+      ),
+    );
+  }
+
+  // Helper para la leyenda de colores
+  pw.Widget _buildPDFLegendItem(String label, PdfColor color) {
+    return pw.Text(
+      label,
+      style: pw.TextStyle(
+        fontSize: 12,
+        fontWeight: pw.FontWeight.bold,
+        color: color,
+      ),
+    );
+  }
 }
