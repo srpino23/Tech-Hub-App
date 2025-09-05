@@ -875,8 +875,9 @@ class TechHubApiClient {
           if (typeOfWork != null) request.fields['typeOfWork'] = typeOfWork;
           if (endTime != null) request.fields['endTime'] = endTime;
           if (location != null) request.fields['location'] = location;
-          if (connectivity != null)
+          if (connectivity != null) {
             request.fields['connectivity'] = connectivity;
+          }
           if (cameraName != null) request.fields['cameraName'] = cameraName;
           if (db != null) request.fields['db'] = db;
           if (buffers != null) request.fields['buffers'] = buffers;
