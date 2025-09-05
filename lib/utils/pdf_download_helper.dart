@@ -13,12 +13,14 @@ class _ReportData {
   final List<Map<String, dynamic>> users;
   final List imageUrls;
   final List<Map<String, dynamic>> inventory;
+  final List<Map<String, dynamic>> recoveredInventory;
 
   _ReportData({
     required this.report,
     required this.users,
     required this.imageUrls,
     required this.inventory,
+    required this.recoveredInventory,
   });
 }
 
@@ -74,6 +76,7 @@ class PDFDownloadHelper {
         'users': extractedData.users,
         'imageBytes': imageBytes,
         'inventory': extractedData.inventory,
+        'recoveredInventory': extractedData.recoveredInventory,
       });
 
       final bytes = await pdf.save();
@@ -94,6 +97,7 @@ class PDFDownloadHelper {
       users: data['users'] as List<Map<String, dynamic>>,
       imageUrls: data['imageUrls'] as List,
       inventory: data['inventory'] as List<Map<String, dynamic>>,
+      recoveredInventory: (data['recoveredInventory'] as List<Map<String, dynamic>>?) ?? [],
     );
   }
 
@@ -178,6 +182,7 @@ class PDFDownloadHelper {
     final users = data['users'] as List<Map<String, dynamic>>;
     final imageBytes = data['imageBytes'] as List<List<int>>?;
     final inventory = data['inventory'] as List<Map<String, dynamic>>;
+    final recoveredInventory = (data['recoveredInventory'] as List<Map<String, dynamic>>?) ?? [];
 
     final pdf = pw.Document();
 
@@ -254,7 +259,7 @@ class PDFDownloadHelper {
     final supplies = report['supplies'];
     if (supplies != null && (supplies as List).isNotEmpty) {
       pdfWidgets.addAll([
-        _buildPDFMaterialsSimpleSection(supplies, inventory),
+        _buildPDFMaterialsSimpleSection(supplies, inventory, recoveredInventory),
         pw.SizedBox(height: 16),
       ]);
     }
@@ -362,15 +367,17 @@ class PDFDownloadHelper {
   static pw.Widget _buildPDFMaterialsSimpleSection(
     List supplies,
     List<Map<String, dynamic>> inventory,
+    List<Map<String, dynamic>> recoveredInventory,
   ) {
     final List<pw.Widget> materialWidgets = [];
 
     // Helper function para obtener nombre del material por ID
     String getMaterialNameById(String materialId) {
-      if (inventory.isEmpty) {
+      if (inventory.isEmpty && recoveredInventory.isEmpty) {
         return 'Material ID: $materialId';
       }
 
+      // Buscar primero en el inventario principal
       final material = inventory.firstWhere(
         (material) => material['_id']?.toString() == materialId,
         orElse: () => <String, dynamic>{},
@@ -378,6 +385,17 @@ class PDFDownloadHelper {
 
       if (material.isNotEmpty) {
         return material['name']?.toString() ?? 'Material ID: $materialId';
+      }
+
+      // Si no se encuentra en el inventario principal, buscar en el recuperado
+      final recoveredMaterial = recoveredInventory.firstWhere(
+        (material) => material['_id']?.toString() == materialId,
+        orElse: () => <String, dynamic>{},
+      );
+
+      if (recoveredMaterial.isNotEmpty) {
+        final name = recoveredMaterial['name']?.toString() ?? 'Material ID: $materialId';
+        return name; // Material recuperado sin prefijo para PDF
       }
 
       return 'Material ID: $materialId';

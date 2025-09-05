@@ -63,13 +63,13 @@ class UniversalFile {
 
       // Ejecutar compresión en un isolate separado para evitar bloquear la UI
       final compressedBytes = await _compressInIsolate(
-        originalBytes, 
-        extension.toLowerCase(), 
-        quality, 
-        maxWidth
+        originalBytes,
+        extension.toLowerCase(),
+        quality,
+        maxWidth,
       );
-      
-      if (compressedBytes != null && 
+
+      if (compressedBytes != null &&
           compressedBytes.length < originalBytes.length * 0.8) {
         _compressedBytes = compressedBytes;
       }
@@ -83,10 +83,10 @@ class UniversalFile {
 
   // Método auxiliar para comprimir en isolate separado
   static Future<Uint8List?> _compressInIsolate(
-    Uint8List originalBytes, 
-    String extension, 
-    int quality, 
-    int? maxWidth
+    Uint8List originalBytes,
+    String extension,
+    int quality,
+    int? maxWidth,
   ) async {
     try {
       return await compute(_performCompression, {
@@ -115,7 +115,8 @@ class UniversalFile {
       if (image == null) return null;
 
       // Validar dimensiones para evitar crashes de memoria
-      if (image.width * image.height > 50000000) { // ~50MP
+      if (image.width * image.height > 50000000) {
+        // ~50MP
         if (kDebugMode) {
           print('Imagen demasiado grande: ${image.width}x${image.height}');
         }
@@ -125,7 +126,7 @@ class UniversalFile {
       // Redimensionar si es muy grande
       img.Image resizedImage = image;
       final targetWidth = maxWidth ?? (image.width > 1920 ? 1920 : image.width);
-      
+
       if (image.width > targetWidth) {
         try {
           resizedImage = img.copyResize(image, width: targetWidth);
@@ -493,16 +494,18 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
 
       if (response.isSuccess && response.data != null) {
         final allCameras = response.data!;
-        
+
         // Obtener el nombre del team actual para filtrar cámaras
         final currentTeamName = widget.authManager.teamName;
-        
+
         // Filtrar cámaras por el campo liable que coincida con el team actual
-        final teamCameras = allCameras.where((camera) {
-          final cameraLiable = camera['liable']?.toString().toLowerCase().trim();
-          final teamNameLower = currentTeamName?.toLowerCase().trim();
-          return cameraLiable == teamNameLower;
-        }).toList();
+        final teamCameras =
+            allCameras.where((camera) {
+              final cameraLiable =
+                  camera['liable']?.toString().toLowerCase().trim();
+              final teamNameLower = currentTeamName?.toLowerCase().trim();
+              return cameraLiable == teamNameLower;
+            }).toList();
 
         if (mounted) {
           setState(() {
@@ -524,21 +527,80 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     }
   }
 
+  // Traducir estados de cámara del inglés al español
+  String _translateCameraStatus(String? status) {
+    if (status == null) return 'Sin estado';
+
+    switch (status.toLowerCase()) {
+      case 'online':
+        return 'En línea';
+      case 'warning':
+        return 'Advertencia';
+      case 'offline':
+        return 'Fuera de línea';
+      case 'maintenance':
+        return 'Mantenimiento';
+      case 'removed':
+        return 'Retirada';
+      default:
+        return status; // Retorna el estado original si no coincide
+    }
+  }
+
+  // Traducir tipos de cámara del inglés al español
+  String _translateCameraType(String? type) {
+    if (type == null) return 'Sin tipo';
+
+    switch (type.toLowerCase()) {
+      case 'fixed':
+        return 'Fija';
+      case 'dome':
+        return 'Domo';
+      case 'lpr':
+        return 'LPR';
+      case 'button':
+        return 'Botón';
+      default:
+        return type; // Retorna el tipo original si no coincide
+    }
+  }
+
+  // Obtener color del estado de cámara
+  Color _getCameraStatusColor(String? status) {
+    if (status == null) return Colors.grey;
+
+    switch (status.toLowerCase()) {
+      case 'online':
+        return Colors.green;
+      case 'warning':
+        return Colors.orange;
+      case 'offline':
+        return Colors.red;
+      case 'maintenance':
+        return Colors.blue;
+      case 'removed':
+        return Colors.grey;
+      default:
+        return Colors.grey;
+    }
+  }
+
   void _filterCameras() {
     final query = _cameraSearchController.text.toLowerCase();
     setState(() {
       if (query.isEmpty) {
         _filteredCameras = _availableCameras;
       } else {
-        _filteredCameras = _availableCameras.where((camera) {
-          final cameraName = camera['name']?.toString().toLowerCase() ?? '';
-          final cameraZone = camera['zone']?.toString().toLowerCase() ?? '';
-          final cameraType = camera['type']?.toString().toLowerCase() ?? '';
-          
-          return cameraName.contains(query) ||
-                 cameraZone.contains(query) ||
-                 cameraType.contains(query);
-        }).toList();
+        _filteredCameras =
+            _availableCameras.where((camera) {
+              final cameraName = camera['name']?.toString().toLowerCase() ?? '';
+              final cameraZone = camera['zone']?.toString().toLowerCase() ?? '';
+              final cameraType = camera['type']?.toString().toLowerCase() ?? '';
+
+              return cameraName.contains(query) ||
+                  cameraZone.contains(query) ||
+                  cameraType.contains(query);
+            }).toList();
       }
     });
   }
@@ -1266,6 +1328,9 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   }
 
   void _onFormChanged() {
+    // Actualizar estado para reflejar cambios en validación
+    setState(() {});
+
     // Debounced save - Guardar después de 2 segundos de inactividad
     if (_isDraftCreated) {
       _autoSaveTimer?.cancel();
@@ -1273,6 +1338,48 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         _saveDraft();
       });
     }
+  }
+
+  // Validar si todos los campos requeridos están completados para finalizar el remito
+  bool get _isFormValidForFinish {
+    // Campo obligatorio: descripción
+    if (_descriptionController.text.trim().isEmpty) return false;
+
+    // Campo obligatorio: ubicación
+    if (_currentLocation == null) return false;
+
+    // Campo obligatorio: cámara asociada
+    if (_selectedCameraName == null || _selectedCameraName!.isEmpty) {
+      return false;
+    }
+
+    // Validaciones específicas por tipo de conectividad
+    if (_connectivity == 'Fibra óptica') {
+      // Para fibra óptica, todos los campos son obligatorios
+      if (_dbController.text.trim().isEmpty ||
+          _buffersController.text.trim().isEmpty ||
+          _bufferColorController.text.trim().isEmpty ||
+          _hairColorController.text.trim().isEmpty) {
+        return false;
+      }
+    } else if (_connectivity == 'Enlace') {
+      // Para enlace, AP, ST y CCQ son obligatorios
+      if (_apNameController.text.trim().isEmpty ||
+          _apIpController.text.trim().isEmpty ||
+          _stNameController.text.trim().isEmpty ||
+          _stIpController.text.trim().isEmpty ||
+          _ccqController.text.trim().isEmpty) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  // Validar si se puede crear un borrador (validación mínima)
+  bool get _canCreateDraft {
+    // Para crear un borrador, solo verificamos que no esté enviando
+    return !_isSubmitting;
   }
 
   void _resetForm() {
@@ -1314,36 +1421,49 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     required String label,
     TextInputType? keyboardType,
     int maxLines = 1,
+    bool isRequired = false,
   }) {
+    final isEmpty = controller.text.trim().isEmpty;
+    final showError = isRequired && isEmpty;
+
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
       maxLines: maxLines,
       decoration: InputDecoration(
-        labelText: label,
+        labelText: isRequired ? '$label *' : label,
         labelStyle: TextStyle(
-          color: Colors.grey[600],
+          color: showError ? Colors.red[600] : Colors.grey[600],
           fontSize: 14,
           fontWeight: FontWeight.w500,
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[300]!),
+          borderSide: BorderSide(
+            color: showError ? Colors.red[300]! : Colors.grey[300]!,
+          ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[300]!),
+          borderSide: BorderSide(
+            color: showError ? Colors.red[300]! : Colors.grey[300]!,
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFF1E293B), width: 2),
+          borderSide: BorderSide(
+            color: showError ? Colors.red[500]! : const Color(0xFF1E293B),
+            width: 2,
+          ),
         ),
         filled: true,
-        fillColor: Colors.grey[50],
+        fillColor: showError ? Colors.red[50] : Colors.grey[50],
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 16,
         ),
+        helperText: showError ? 'Este campo es obligatorio' : null,
+        helperStyle: TextStyle(color: Colors.red[600], fontSize: 12),
       ),
       style: TextStyle(
         fontSize: 14,
@@ -1907,6 +2027,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   child: _buildInputField(
                     controller: _dbController,
                     label: 'DB',
+                    isRequired: true,
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -1914,6 +2035,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   child: _buildInputField(
                     controller: _buffersController,
                     label: 'Buffers',
+                    isRequired: true,
                   ),
                 ),
               ],
@@ -1925,6 +2047,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   child: _buildInputField(
                     controller: _bufferColorController,
                     label: 'Color del Buffer',
+                    isRequired: true,
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -1932,6 +2055,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   child: _buildInputField(
                     controller: _hairColorController,
                     label: 'Color del Pelo',
+                    isRequired: true,
                   ),
                 ),
               ],
@@ -1943,6 +2067,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   child: _buildInputField(
                     controller: _apNameController,
                     label: 'AP (Nombre)',
+                    isRequired: true,
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -1950,6 +2075,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   child: _buildInputField(
                     controller: _apIpController,
                     label: 'AP (IP)',
+                    isRequired: true,
                   ),
                 ),
               ],
@@ -1961,6 +2087,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   child: _buildInputField(
                     controller: _stNameController,
                     label: 'ST (Nombre)',
+                    isRequired: true,
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -1968,6 +2095,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   child: _buildInputField(
                     controller: _stIpController,
                     label: 'ST (IP)',
+                    isRequired: true,
                   ),
                 ),
               ],
@@ -1981,6 +2109,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                     controller: _ccqController,
                     label: 'CCQ (%)',
                     keyboardType: TextInputType.number,
+                    isRequired: true,
                   ),
                 ),
                 const Expanded(flex: 1, child: SizedBox()),
@@ -2025,18 +2154,21 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
               ),
               const SizedBox(width: 12),
               Text(
-                'Cámara Asociada',
+                'Cámara Asociada *',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
-                  color: Colors.grey[800],
+                  color:
+                      _selectedCameraName == null
+                          ? Colors.red[600]
+                          : Colors.grey[800],
                   letterSpacing: 0.15,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 20),
-          
+
           // Buscador de cámaras
           TextFormField(
             controller: _cameraSearchController,
@@ -2048,10 +2180,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
               ),
-              hintStyle: TextStyle(
-                color: Colors.grey[400],
-                fontSize: 13,
-              ),
+              hintStyle: TextStyle(color: Colors.grey[400], fontSize: 13),
               prefixIcon: Container(
                 margin: const EdgeInsets.all(12),
                 padding: const EdgeInsets.all(8),
@@ -2065,21 +2194,22 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   size: 18,
                 ),
               ),
-              suffixIcon: _selectedCameraName != null
-                  ? Container(
-                      margin: const EdgeInsets.all(12),
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(
-                        LucideIcons.check,
-                        color: Colors.green.shade600,
-                        size: 18,
-                      ),
-                    )
-                  : null,
+              suffixIcon:
+                  _selectedCameraName != null
+                      ? Container(
+                        margin: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          LucideIcons.check,
+                          color: Colors.green.shade600,
+                          size: 18,
+                        ),
+                      )
+                      : null,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(color: Colors.grey[300]!),
@@ -2191,9 +2321,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
             if (_isLoadingCameras)
               Container(
                 padding: const EdgeInsets.all(20),
-                child: const Center(
-                  child: CircularProgressIndicator(),
-                ),
+                child: const Center(child: CircularProgressIndicator()),
               )
             else if (_filteredCameras.isEmpty)
               Container(
@@ -2238,10 +2366,17 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   itemCount: _filteredCameras.length,
                   itemBuilder: (context, index) {
                     final camera = _filteredCameras[index];
-                    final cameraName = camera['name']?.toString() ?? 'Cámara sin nombre';
+                    final cameraName =
+                        camera['name']?.toString() ?? 'Cámara sin nombre';
                     final cameraZone = camera['zone']?.toString() ?? 'Sin zona';
-                    final cameraType = camera['type']?.toString() ?? 'Sin tipo';
-                    
+                    final cameraType = camera['type']?.toString();
+                    final translatedType = _translateCameraType(cameraType);
+                    final cameraStatus = camera['status']?.toString();
+                    final translatedStatus = _translateCameraStatus(
+                      cameraStatus,
+                    );
+                    final statusColor = _getCameraStatusColor(cameraStatus);
+
                     return ListTile(
                       leading: Container(
                         padding: const EdgeInsets.all(8),
@@ -2262,12 +2397,39 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                           fontSize: 14,
                         ),
                       ),
-                      subtitle: Text(
-                        '$cameraZone • $cameraType',
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 12,
-                        ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '$cameraZone • $translatedType',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: statusColor,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                translatedStatus,
+                                style: TextStyle(
+                                  color: statusColor,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                       onTap: () {
                         setState(() {
@@ -2280,6 +2442,38 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                 ),
               ),
           ],
+
+          // Mensaje de validación si no hay cámara seleccionada
+          if (_selectedCameraName == null)
+            Container(
+              margin: const EdgeInsets.only(top: 16),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.red[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red[200]!),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    LucideIcons.alertTriangle,
+                    color: Colors.red[600],
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Debe seleccionar una cámara asociada al trabajo',
+                      style: TextStyle(
+                        color: Colors.red[700],
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -2329,56 +2523,11 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
             ],
           ),
           const SizedBox(height: 20),
-          TextFormField(
+          _buildInputField(
             controller: _descriptionController,
-            decoration: InputDecoration(
-              labelText: 'Descripción detallada del trabajo realizado',
-              labelStyle: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey[300]!),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey[300]!),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(
-                  color: Color(0xFF1E293B),
-                  width: 2,
-                ),
-              ),
-              errorBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Colors.red, width: 2),
-              ),
-              focusedErrorBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Colors.red, width: 2),
-              ),
-              alignLabelWithHint: true,
-              filled: true,
-              fillColor: Colors.grey[50],
-              contentPadding: const EdgeInsets.all(20),
-            ),
+            label: 'Descripción detallada del trabajo realizado',
             maxLines: 5,
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-              color: Colors.grey[800],
-              height: 1.4,
-            ),
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return 'Por favor ingrese una descripción del trabajo realizado';
-              }
-              return null;
-            },
+            isRequired: true,
           ),
         ],
       ),
@@ -3030,7 +3179,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   }
 
   Widget _buildSubmitButton() {
-    final isEnabled = !_isSubmitting && _currentLocation != null;
+    final isEnabled = !_isSubmitting && 
+        (_isDraftCreated ? _isFormValidForFinish : _canCreateDraft);
     final buttonText = _isDraftCreated ? 'Finalizar Remito' : 'Crear Remito';
     final buttonIcon =
         _isDraftCreated ? LucideIcons.checkCircle : LucideIcons.plus;

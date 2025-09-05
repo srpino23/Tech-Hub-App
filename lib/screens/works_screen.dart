@@ -53,7 +53,9 @@ class _WorksScreenState extends State<WorksScreen> {
   bool _isSearching = false;
 
   List<Map<String, dynamic>> _inventory = [];
+  List<Map<String, dynamic>> _recoveredInventory = [];
   bool _isInventoryLoaded = false;
+  bool _isRecoveredInventoryLoaded = false;
 
   @override
   void initState() {
@@ -101,8 +103,8 @@ class _WorksScreenState extends State<WorksScreen> {
       _reports.clear();
     }
 
-    // Cargar usuarios e inventario primero para que estén disponibles cuando se carguen los reportes
-    await Future.wait([_loadUsers(), _loadInventory()]);
+    // Cargar usuarios e inventarios primero para que estén disponibles cuando se carguen los reportes
+    await Future.wait([_loadUsers(), _loadInventory(), _loadRecoveredInventory()]);
 
     // Cargar datos iniciales rápido, luego el resto en segundo plano
     await Future.wait([_loadTasksInitial(), _loadReportsInitial()]);
@@ -463,6 +465,25 @@ class _WorksScreenState extends State<WorksScreen> {
     }
   }
 
+  Future<void> _loadRecoveredInventory() async {
+    if (_isRecoveredInventoryLoaded) return; // Ya está cargado
+
+    try {
+      final response = await TechHubApiClient.getRecoveredInventory();
+
+      if (response.isSuccess && response.data != null) {
+        if (mounted) {
+          setState(() {
+            _recoveredInventory = response.data!;
+            _isRecoveredInventoryLoaded = true;
+          });
+        }
+      }
+    } catch (e) {
+      // Silenciar errores de carga de inventario recuperado para no interrumpir la funcionalidad principal
+    }
+  }
+
   String _getUserNameById(String userId) {
     return !_isUsersLoaded || _users.isEmpty 
       ? 'Cargando...'
@@ -470,9 +491,24 @@ class _WorksScreenState extends State<WorksScreen> {
   }
 
   String _getMaterialNameById(String materialId) {
-    return !_isInventoryLoaded || _inventory.isEmpty
-      ? 'Cargando...'
-      : DataHelpers.getMaterialNameById(materialId, _inventory);
+    if (!_isInventoryLoaded || !_isRecoveredInventoryLoaded) {
+      return 'Cargando...';
+    }
+
+    // Buscar primero en el inventario principal
+    String materialName = DataHelpers.getMaterialNameById(materialId, _inventory);
+    
+    // Si no se encuentra en el inventario principal, buscar en el recuperado
+    if (materialName == 'Material desconocido' && _recoveredInventory.isNotEmpty) {
+      materialName = DataHelpers.getMaterialNameById(materialId, _recoveredInventory);
+      
+      // Si se encuentra en el inventario recuperado, agregar un prefijo para identificarlo
+      if (materialName != 'Material desconocido') {
+        materialName = '♻️ $materialName';
+      }
+    }
+    
+    return materialName;
   }
 
   Future<void> _searchData() async {
@@ -590,10 +626,11 @@ class _WorksScreenState extends State<WorksScreen> {
       _filterTasks();
     });
 
-    // Si se cambia a remitos y los usuarios o inventario no están cargados, cargarlos
-    if (section == 'remitos' && (!_isUsersLoaded || !_isInventoryLoaded)) {
+    // Si se cambia a remitos y los usuarios o inventarios no están cargados, cargarlos
+    if (section == 'remitos' && (!_isUsersLoaded || !_isInventoryLoaded || !_isRecoveredInventoryLoaded)) {
       if (!_isUsersLoaded) _loadUsers();
       if (!_isInventoryLoaded) _loadInventory();
+      if (!_isRecoveredInventoryLoaded) _loadRecoveredInventory();
     }
 
     if (_searchQuery.isNotEmpty) {
@@ -2642,6 +2679,7 @@ class _WorksScreenState extends State<WorksScreen> {
           'users': _users,
           'imageUrls': imageUrls,
           'inventory': _inventory,
+          'recoveredInventory': _recoveredInventory,
         },
       );
 

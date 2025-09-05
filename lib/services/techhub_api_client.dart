@@ -186,11 +186,16 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<List<Map<String, dynamic>>>>
-  getRecoveredInventory() async {
+  getRecoveredInventory({String? status}) async {
     try {
+      String url = '$baseUrl/recoveredInventory/getRecoveredInventory';
+      if (status != null) {
+        url += '?status=$status';
+      }
+
       final response = await http
           .get(
-            Uri.parse('$baseUrl/recoveredInventory/getRecoveredInventory'),
+            Uri.parse(url),
             headers: _jsonHeaders,
           )
           .timeout(timeoutDuration);
@@ -199,6 +204,510 @@ class TechHubApiClient {
         response,
         (data) => List<Map<String, dynamic>>.from(data),
       );
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  // Main Inventory endpoints
+  static Future<ApiResponse<Map<String, dynamic>>> createMaterial({
+    required String name,
+    required int quantity,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/inventory/createMaterial'),
+            headers: _jsonHeaders,
+            body: json.encode({'name': name, 'quantity': quantity}),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> editMaterial({
+    required String id,
+    required String name,
+    required int quantity,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/inventory/editMaterial'),
+            headers: _jsonHeaders,
+            body: json.encode({'id': id, 'name': name, 'quantity': quantity}),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> deleteMaterial({
+    required String id,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/inventory/deleteMaterial'),
+            headers: _jsonHeaders,
+            body: json.encode({'id': id}),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> addToInventory({
+    required String change,
+    required String materialId,
+    required int quantity,
+    required String name,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/inventory/addToInventory'),
+            headers: _jsonHeaders,
+            body: json.encode({
+              'change': change,
+              'materialId': materialId,
+              'quantity': quantity,
+              'name': name,
+            }),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> removeFromInventory({
+    required String change,
+    required String materialId,
+    required int quantity,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/inventory/removeFromInventory'),
+            headers: _jsonHeaders,
+            body: json.encode({
+              'change': change,
+              'materialId': materialId,
+              'quantity': quantity,
+            }),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> moveToAnotherInventory({
+    required String change,
+    required String materialId,
+    required int quantity,
+    required String teamId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/inventory/moveToAnotherInventory'),
+            headers: _jsonHeaders,
+            body: json.encode({
+              'change': change,
+              'materialId': materialId,
+              'quantity': quantity,
+              'teamId': teamId,
+            }),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> returnToInventory({
+    required String change,
+    required String materialId,
+    required int quantity,
+    required String teamId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/inventory/returnToInventory'),
+            headers: _jsonHeaders,
+            body: json.encode({
+              'change': change,
+              'materialId': materialId,
+              'quantity': quantity,
+              'teamId': teamId,
+            }),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> returnReconditionedToRecovered({
+    required String change,
+    required String materialId,
+    required int quantity,
+    required String teamId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/inventory/returnReconditionedToRecovered'),
+            headers: _jsonHeaders,
+            body: json.encode({
+              'change': change,
+              'materialId': materialId,
+              'quantity': quantity,
+              'teamId': teamId,
+            }),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<List<Map<String, dynamic>>>> getInventoryTeam({
+    required String teamId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/inventory/getInventoryTeam'),
+            headers: _jsonHeaders,
+            body: json.encode({'teamId': teamId}),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<List<Map<String, dynamic>>>(
+        response,
+        (data) => List<Map<String, dynamic>>.from(data),
+      );
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  // Recovered Inventory endpoints
+  static Future<ApiResponse<Map<String, dynamic>>> createRecoveredMaterial({
+    required String name,
+    required int quantity,
+    String? originalMaterialId,
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        'name': name,
+        'quantity': quantity,
+      };
+      if (originalMaterialId != null) {
+        body['originalMaterialId'] = originalMaterialId;
+      }
+
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/recoveredInventory/createRecoveredMaterial'),
+            headers: _jsonHeaders,
+            body: json.encode(body),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> editRecoveredMaterial({
+    required String id,
+    String? name,
+    int? quantity,
+  }) async {
+    try {
+      final body = <String, dynamic>{'id': id};
+      if (name != null) body['name'] = name;
+      if (quantity != null) body['quantity'] = quantity;
+
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/recoveredInventory/editRecoveredMaterial'),
+            headers: _jsonHeaders,
+            body: json.encode(body),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> deleteRecoveredMaterial({
+    required String id,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/recoveredInventory/deleteRecoveredMaterial'),
+            headers: _jsonHeaders,
+            body: json.encode({'id': id}),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> deleteAddition({
+    required String materialId,
+    required String additionId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/recoveredInventory/deleteAddition'),
+            headers: _jsonHeaders,
+            body: json.encode({'materialId': materialId, 'additionId': additionId}),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> updateAdditionStatus({
+    required String materialId,
+    required String additionId,
+    required String status,
+    String? condition,
+    String? notes,
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        'materialId': materialId,
+        'additionId': additionId,
+        'status': status,
+      };
+      if (condition != null) body['condition'] = condition;
+      if (notes != null) body['notes'] = notes;
+
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/recoveredInventory/updateAdditionStatus'),
+            headers: _jsonHeaders,
+            body: json.encode(body),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> transferToTeam({
+    required String materialId,
+    required String additionId,
+    required int quantity,
+    required String teamId,
+    required String change,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/recoveredInventory/transferToTeam'),
+            headers: _jsonHeaders,
+            body: json.encode({
+              'materialId': materialId,
+              'additionId': additionId,
+              'quantity': quantity,
+              'teamId': teamId,
+              'change': change,
+            }),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> getRecoveredMaterialById({
+    required String id,
+  }) async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/recoveredInventory/getRecoveredMaterial/$id'),
+            headers: _jsonHeaders,
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> getTeamMaterialDetails({
+    required String teamId,
+    required String materialName,
+  }) async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/recoveredInventory/getTeamMaterialDetails/$teamId/$materialName'),
+            headers: _jsonHeaders,
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  // Team endpoints
+  static Future<ApiResponse<Map<String, dynamic>>> createTeam({
+    required String name,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/team/createTeam'),
+            headers: _jsonHeaders,
+            body: json.encode({'name': name}),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> editTeam({
+    required String id,
+    required String name,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/team/editTeam'),
+            headers: _jsonHeaders,
+            body: json.encode({'id': id, 'name': name}),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> deleteTeam({
+    required String id,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/team/deleteTeam'),
+            headers: _jsonHeaders,
+            body: json.encode({'id': id}),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> addToTeam({
+    required String teamId,
+    required String userId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/team/addToTeam'),
+            headers: _jsonHeaders,
+            body: json.encode({'teamId': teamId, 'userId': userId}),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> removeFromTeam({
+    required String teamId,
+    required String userId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/team/removeFromTeam'),
+            headers: _jsonHeaders,
+            body: json.encode({'teamId': teamId, 'userId': userId}),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> moveToAnotherTeam({
+    required String teamId,
+    required String userId,
+    required String newTeamId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/team/moveToAnotherTeam'),
+            headers: _jsonHeaders,
+            body: json.encode({'teamId': teamId, 'userId': userId, 'newTeamId': newTeamId}),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
     } catch (e) {
       return ApiResponse.error(_getErrorMessage(e));
     }
@@ -444,12 +953,25 @@ class TechHubApiClient {
   ) {
     try {
       if (response.statusCode >= 200 && response.statusCode < 300) {
+        // Handle 204 No Content responses
+        if (response.statusCode == 204 || response.body.isEmpty) {
+          // For 204 responses, return a success with empty data or default value
+          if (T == Map<String, dynamic>) {
+            return ApiResponse.success(converter({'success': true, 'message': 'Operation completed successfully'}));
+          }
+          return ApiResponse.success(converter({}));
+        }
+        
         final data = json.decode(response.body);
         return ApiResponse.success(converter(data));
       } else {
-        final errorData = json.decode(response.body);
-        final message = errorData['message'] ?? 'Error ${response.statusCode}';
-        return ApiResponse.error(message);
+        try {
+          final errorData = json.decode(response.body);
+          final message = errorData['message'] ?? 'Error ${response.statusCode}';
+          return ApiResponse.error(message);
+        } catch (e) {
+          return ApiResponse.error('Error ${response.statusCode}');
+        }
       }
     } catch (e) {
       return ApiResponse.error('Error parsing response: $e');
