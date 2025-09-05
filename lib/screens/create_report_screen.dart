@@ -50,32 +50,27 @@ class UniversalFile {
     try {
       final originalBytes = platformFile.bytes!;
 
+      // Verificar límite de tamaño (máximo 50MB para evitar crashes de memoria)
+      if (originalBytes.length > 50 * 1024 * 1024) {
+        if (kDebugMode) {
+          print('Imagen demasiado grande: ${originalBytes.length} bytes');
+        }
+        return;
+      }
+
       // Solo comprimir si la imagen es mayor a 500KB
       if (originalBytes.length < 500 * 1024) return;
 
-      final image = img.decodeImage(originalBytes);
-      if (image == null) return;
-
-      // Redimensionar si es muy grande
-      img.Image resizedImage = image;
-      if (maxWidth != null && image.width > maxWidth) {
-        resizedImage = img.copyResize(image, width: maxWidth);
-      } else if (image.width > 1920) {
-        resizedImage = img.copyResize(image, width: 1920);
-      }
-
-      // Comprimir según el formato
-      late Uint8List compressedBytes;
-      if (extension.toLowerCase() == 'png') {
-        compressedBytes = Uint8List.fromList(img.encodePng(resizedImage));
-      } else {
-        compressedBytes = Uint8List.fromList(
-          img.encodeJpg(resizedImage, quality: quality),
-        );
-      }
-
-      // Solo usar la versión comprimida si es significativamente más pequeña
-      if (compressedBytes.length < originalBytes.length * 0.8) {
+      // Ejecutar compresión en un isolate separado para evitar bloquear la UI
+      final compressedBytes = await _compressInIsolate(
+        originalBytes, 
+        extension.toLowerCase(), 
+        quality, 
+        maxWidth
+      );
+      
+      if (compressedBytes != null && 
+          compressedBytes.length < originalBytes.length * 0.8) {
         _compressedBytes = compressedBytes;
       }
     } catch (e) {
@@ -83,6 +78,85 @@ class UniversalFile {
         print('Error comprimiendo imagen: $e');
       }
       // En caso de error, usar la imagen original
+    }
+  }
+
+  // Método auxiliar para comprimir en isolate separado
+  static Future<Uint8List?> _compressInIsolate(
+    Uint8List originalBytes, 
+    String extension, 
+    int quality, 
+    int? maxWidth
+  ) async {
+    try {
+      return await compute(_performCompression, {
+        'bytes': originalBytes,
+        'extension': extension,
+        'quality': quality,
+        'maxWidth': maxWidth,
+      });
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error en isolate de compresión: $e');
+      }
+      return null;
+    }
+  }
+
+  // Función estática para ejecutar en compute
+  static Uint8List? _performCompression(Map<String, dynamic> params) {
+    try {
+      final Uint8List originalBytes = params['bytes'];
+      final String extension = params['extension'];
+      final int quality = params['quality'];
+      final int? maxWidth = params['maxWidth'];
+
+      final image = img.decodeImage(originalBytes);
+      if (image == null) return null;
+
+      // Validar dimensiones para evitar crashes de memoria
+      if (image.width * image.height > 50000000) { // ~50MP
+        if (kDebugMode) {
+          print('Imagen demasiado grande: ${image.width}x${image.height}');
+        }
+        return null;
+      }
+
+      // Redimensionar si es muy grande
+      img.Image resizedImage = image;
+      final targetWidth = maxWidth ?? (image.width > 1920 ? 1920 : image.width);
+      
+      if (image.width > targetWidth) {
+        try {
+          resizedImage = img.copyResize(image, width: targetWidth);
+        } catch (e) {
+          if (kDebugMode) {
+            print('Error redimensionando imagen: $e');
+          }
+          return null;
+        }
+      }
+
+      // Comprimir según el formato con manejo de memoria mejorado
+      try {
+        if (extension == 'png') {
+          return Uint8List.fromList(img.encodePng(resizedImage, level: 6));
+        } else {
+          return Uint8List.fromList(
+            img.encodeJpg(resizedImage, quality: quality),
+          );
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('Error codificando imagen: $e');
+        }
+        return null;
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error general en compresión: $e');
+      }
+      return null;
     }
   }
 
