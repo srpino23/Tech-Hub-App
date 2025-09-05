@@ -61,10 +61,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   shape: BoxShape.circle,
                   color: Colors.orange.shade50,
                 ),
-                child: const Icon(
-                  LucideIcons.shield,
-                  size: 80,
-                  color: Colors.orange,
+                child: ClipOval(
+                  child: Image.asset(
+                    'lib/assets/images/logo.png',
+                    width: 80,
+                    height: 80,
+                    fit: BoxFit.cover,
+                  ),
                 ),
               ),
               const SizedBox(height: 20),

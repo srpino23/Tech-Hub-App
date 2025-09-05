@@ -1,7 +1,7 @@
-name: techhubmobile
-description: "A new Flutter project."
+name: tech_hub
+description: "Tech Hub Aplicacion Tecnica"
 publish_to: 'none'
-version: 0.1.0
+version: 4.0.1
 
 environment:
   sdk: ^3.7.0
@@ -39,3 +39,4 @@ flutter:
   assets:
     - lib/assets/geojson/
     - lib/assets/mapIcons/
+    - lib/assets/images/
