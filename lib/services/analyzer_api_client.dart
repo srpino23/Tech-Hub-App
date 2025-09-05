@@ -266,7 +266,8 @@ class AnalyzerApiClient {
   // Endpoints de Historial Operativo
   // =======================
 
-  static Future<ApiResponse<List<Map<String, dynamic>>>> getOperationalHistory() async {
+  static Future<ApiResponse<List<Map<String, dynamic>>>>
+  getOperationalHistory() async {
     try {
       final response = await http
           .get(

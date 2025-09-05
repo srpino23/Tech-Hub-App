@@ -1100,9 +1100,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                 ),
                 const SizedBox(width: 12),
                 Text(
-                  selectedTab == 1
-                      ? 'Crear Recuperado'
-                      : 'Agregar Material',
+                  selectedTab == 1 ? 'Crear Recuperado' : 'Agregar Material',
                 ),
               ],
             ),

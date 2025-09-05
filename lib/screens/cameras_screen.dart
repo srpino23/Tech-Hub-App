@@ -20,7 +20,7 @@ class _CamerasScreenState extends State<CamerasScreen> {
   List<Map<String, dynamic>> _cameras = [];
   bool _isLoading = true;
   bool _isShowingErrorDialog = false;
-  
+
   // MapController para gestionar el ciclo de vida del mapa
   MapController? _mapController;
 

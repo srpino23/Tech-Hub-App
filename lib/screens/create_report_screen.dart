@@ -261,7 +261,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   bool _isLoadingCameras = false;
   List<Map<String, dynamic>> _filteredCameras = [];
   bool _isOutOfZone = false;
-  final TextEditingController _outOfZoneDescriptionController = TextEditingController();
+  final TextEditingController _outOfZoneDescriptionController =
+      TextEditingController();
 
   // Images
   final List<UniversalFile> _selectedImages = [];
@@ -392,10 +393,13 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         var materialName = teamMaterial['materialName']?.toString();
         final isReconditioned = teamMaterial['isReconditioned'] == true;
 
-        if (materialId != null && materialName != null && materialName.isNotEmpty) {
+        if (materialId != null &&
+            materialName != null &&
+            materialName.isNotEmpty) {
           // Agregar "(Recuperado)" al nombre si es un material reacondicionado
-          final displayName = isReconditioned ? '$materialName (Recuperado)' : materialName;
-          
+          final displayName =
+              isReconditioned ? '$materialName (Recuperado)' : materialName;
+
           materialsWithNames.add({
             'materialId': materialId,
             'materialName': displayName,
@@ -422,7 +426,6 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       }
     }
   }
-
 
   Future<void> _loadCameras() async {
     if (!mounted) return;
@@ -965,9 +968,10 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         location:
             '${_currentLocation!.latitude},${_currentLocation!.longitude}',
         connectivity: _connectivity,
-        cameraName: _isOutOfZone 
-            ? 'Fuera de zona: ${_outOfZoneDescriptionController.text}'
-            : _selectedCameraName,
+        cameraName:
+            _isOutOfZone
+                ? 'Fuera de zona: ${_outOfZoneDescriptionController.text}'
+                : _selectedCameraName,
         db:
             _connectivity == 'Fibra óptica' && _dbController.text.isNotEmpty
                 ? _dbController.text
@@ -1079,10 +1083,13 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
           _typeOfWork = report.typeOfWork ?? _typeOfWorkOptions.first;
           _connectivity = report.connectivity ?? _connectivityOptions.first;
           // Manejar cámara o fuera de zona
-          if (report.cameraName != null && report.cameraName!.startsWith('Fuera de zona: ')) {
+          if (report.cameraName != null &&
+              report.cameraName!.startsWith('Fuera de zona: ')) {
             _isOutOfZone = true;
             _selectedCameraName = null;
-            _outOfZoneDescriptionController.text = report.cameraName!.substring(15); // Remover "Fuera de zona: "
+            _outOfZoneDescriptionController.text = report.cameraName!.substring(
+              15,
+            ); // Remover "Fuera de zona: "
           } else {
             _isOutOfZone = false;
             _selectedCameraName = report.cameraName;
@@ -1236,9 +1243,10 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                 ? '${_currentLocation!.latitude},${_currentLocation!.longitude}'
                 : null,
         connectivity: _connectivity,
-        cameraName: _isOutOfZone 
-            ? 'Fuera de zona: ${_outOfZoneDescriptionController.text}'
-            : _selectedCameraName,
+        cameraName:
+            _isOutOfZone
+                ? 'Fuera de zona: ${_outOfZoneDescriptionController.text}'
+                : _selectedCameraName,
         db:
             _connectivity == 'Fibra óptica' && _dbController.text.isNotEmpty
                 ? _dbController.text
@@ -2134,74 +2142,75 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
           const SizedBox(height: 20),
 
           // Buscador de cámaras (solo si no está fuera de zona)
-          if (!_isOutOfZone) TextFormField(
-            controller: _cameraSearchController,
-            decoration: InputDecoration(
-              labelText: 'Buscar cámara...',
-              hintText: 'Escriba el nombre, zona o tipo de cámara',
-              labelStyle: TextStyle(
-                color: Colors.grey[600],
+          if (!_isOutOfZone)
+            TextFormField(
+              controller: _cameraSearchController,
+              decoration: InputDecoration(
+                labelText: 'Buscar cámara...',
+                hintText: 'Escriba el nombre, zona o tipo de cámara',
+                labelStyle: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+                hintStyle: TextStyle(color: Colors.grey[400], fontSize: 13),
+                prefixIcon: Container(
+                  margin: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    LucideIcons.search,
+                    color: Colors.blue.shade600,
+                    size: 18,
+                  ),
+                ),
+                suffixIcon:
+                    _selectedCameraName != null
+                        ? Container(
+                          margin: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            LucideIcons.check,
+                            color: Colors.green.shade600,
+                            size: 18,
+                          ),
+                        )
+                        : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(
+                    color: Color(0xFF1E293B),
+                    width: 2,
+                  ),
+                ),
+                filled: true,
+                fillColor: Colors.grey[50],
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 16,
+                ),
+              ),
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-              ),
-              hintStyle: TextStyle(color: Colors.grey[400], fontSize: 13),
-              prefixIcon: Container(
-                margin: const EdgeInsets.all(12),
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  LucideIcons.search,
-                  color: Colors.blue.shade600,
-                  size: 18,
-                ),
-              ),
-              suffixIcon:
-                  _selectedCameraName != null
-                      ? Container(
-                        margin: const EdgeInsets.all(12),
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.green.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(
-                          LucideIcons.check,
-                          color: Colors.green.shade600,
-                          size: 18,
-                        ),
-                      )
-                      : null,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey[300]!),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey[300]!),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(
-                  color: Color(0xFF1E293B),
-                  width: 2,
-                ),
-              ),
-              filled: true,
-              fillColor: Colors.grey[50],
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 16,
+                color: Colors.grey[800],
               ),
             ),
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: Colors.grey[800],
-            ),
-          ),
 
           const SizedBox(height: 16),
 
@@ -2456,13 +2465,16 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
-                          color: _isOutOfZone ? Colors.blue[700] : Colors.grey[700],
+                          color:
+                              _isOutOfZone
+                                  ? Colors.blue[700]
+                                  : Colors.grey[700],
                         ),
                       ),
                     ),
                   ],
                 ),
-                
+
                 // Input de descripción cuando está fuera de zona
                 if (_isOutOfZone) ...[
                   const SizedBox(height: 16),
@@ -2476,7 +2488,10 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
                       ),
-                      hintStyle: TextStyle(color: Colors.grey[400], fontSize: 13),
+                      hintStyle: TextStyle(
+                        color: Colors.grey[400],
+                        fontSize: 13,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                         borderSide: BorderSide(color: Colors.blue[300]!),
@@ -2544,7 +2559,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
             ),
 
           // Mensaje de validación si está fuera de zona pero no hay descripción
-          if (_isOutOfZone && _outOfZoneDescriptionController.text.trim().isEmpty)
+          if (_isOutOfZone &&
+              _outOfZoneDescriptionController.text.trim().isEmpty)
             Container(
               margin: const EdgeInsets.only(top: 16),
               padding: const EdgeInsets.all(16),
@@ -2783,27 +2799,33 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                           _materialQuantities[materialId] ?? 0;
 
                       final isRecovered = material['isRecovered'] == true;
-                      
+
                       return Container(
                         margin: const EdgeInsets.only(bottom: 12),
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: selectedQuantity > 0
-                              ? (isRecovered 
-                                  ? Colors.green.withValues(alpha: 0.05)
-                                  : const Color(0xFF1E293B).withValues(alpha: 0.05))
-                              : (isRecovered 
-                                  ? Colors.green[25]
-                                  : Colors.grey[50]),
+                          color:
+                              selectedQuantity > 0
+                                  ? (isRecovered
+                                      ? Colors.green.withValues(alpha: 0.05)
+                                      : const Color(
+                                        0xFF1E293B,
+                                      ).withValues(alpha: 0.05))
+                                  : (isRecovered
+                                      ? Colors.green[25]
+                                      : Colors.grey[50]),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: selectedQuantity > 0
-                                ? (isRecovered 
-                                    ? Colors.green.withValues(alpha: 0.4)
-                                    : const Color(0xFF1E293B).withValues(alpha: 0.3))
-                                : (isRecovered 
-                                    ? Colors.green[200]!
-                                    : Colors.grey[200]!),
+                            color:
+                                selectedQuantity > 0
+                                    ? (isRecovered
+                                        ? Colors.green.withValues(alpha: 0.4)
+                                        : const Color(
+                                          0xFF1E293B,
+                                        ).withValues(alpha: 0.3))
+                                    : (isRecovered
+                                        ? Colors.green[200]!
+                                        : Colors.grey[200]!),
                             width: isRecovered ? 2 : 1,
                           ),
                         ),
@@ -2821,11 +2843,14 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                                           // Icono para materiales recuperados
                                           if (isRecovered) ...[
                                             Container(
-                                              margin: const EdgeInsets.only(right: 8),
+                                              margin: const EdgeInsets.only(
+                                                right: 8,
+                                              ),
                                               padding: const EdgeInsets.all(4),
                                               decoration: BoxDecoration(
                                                 color: Colors.green[100],
-                                                borderRadius: BorderRadius.circular(6),
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
                                               ),
                                               child: Icon(
                                                 LucideIcons.recycle,
@@ -2836,13 +2861,15 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                                           ],
                                           Expanded(
                                             child: Text(
-                                              material['materialName'] ?? 'Material',
+                                              material['materialName'] ??
+                                                  'Material',
                                               style: TextStyle(
                                                 fontSize: 15,
                                                 fontWeight: FontWeight.w600,
-                                                color: isRecovered
-                                                    ? Colors.green[800]
-                                                    : Colors.grey[800],
+                                                color:
+                                                    isRecovered
+                                                        ? Colors.green[800]
+                                                        : Colors.grey[800],
                                               ),
                                               maxLines: 2,
                                               overflow: TextOverflow.ellipsis,
@@ -3308,7 +3335,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   }
 
   Widget _buildSubmitButton() {
-    final isEnabled = !_isSubmitting && 
+    final isEnabled =
+        !_isSubmitting &&
         (_isDraftCreated ? _isFormValidForFinish : _canCreateDraft);
     final buttonText = _isDraftCreated ? 'Finalizar Remito' : 'Crear Remito';
     final buttonIcon =

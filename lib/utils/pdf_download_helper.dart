@@ -56,9 +56,9 @@ class PDFDownloadHelper {
     required Map<String, dynamic> data,
   }) async {
     try {
-      return kIsWeb 
-        ? await compute(_generatePDFInBackgroundIsolate, data)
-        : await _generatePDFInBackgroundIsolate(data);
+      return kIsWeb
+          ? await compute(_generatePDFInBackgroundIsolate, data)
+          : await _generatePDFInBackgroundIsolate(data);
     } catch (e) {
       return _createErrorResult(e.toString());
     }
@@ -80,8 +80,11 @@ class PDFDownloadHelper {
       });
 
       final bytes = await pdf.save();
-      final fileName = _generateFileName(extractedData.report, extractedData.users);
-      
+      final fileName = _generateFileName(
+        extractedData.report,
+        extractedData.users,
+      );
+
       await downloadPDF(bytes: bytes, fileName: fileName);
 
       return _createSuccessResult(bytes, fileName);
@@ -97,54 +100,70 @@ class PDFDownloadHelper {
       users: data['users'] as List<Map<String, dynamic>>,
       imageUrls: data['imageUrls'] as List,
       inventory: data['inventory'] as List<Map<String, dynamic>>,
-      recoveredInventory: (data['recoveredInventory'] as List<Map<String, dynamic>>?) ?? [],
+      recoveredInventory:
+          (data['recoveredInventory'] as List<Map<String, dynamic>>?) ?? [],
     );
   }
 
   static Future<List<List<int>>> _downloadImages(List imageUrls) async {
     if (imageUrls.isEmpty) return [];
-    
+
     final limitedUrls = imageUrls.take(4).toList();
     final futures = limitedUrls.map(_downloadSingleImage);
     final results = await Future.wait(futures);
-    
-    return results.where((result) => result != null && result.isNotEmpty).cast<List<int>>().toList();
+
+    return results
+        .where((result) => result != null && result.isNotEmpty)
+        .cast<List<int>>()
+        .toList();
   }
 
   static Future<List<int>?> _downloadSingleImage(dynamic url) async {
     try {
-      final response = await http.get(
-        Uri.parse(url.toString()),
-        headers: {
-          'User-Agent': 'TechHub-Mobile/1.0',
-          'Accept': 'image/*',
-        },
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .get(
+            Uri.parse(url.toString()),
+            headers: {'User-Agent': 'TechHub-Mobile/1.0', 'Accept': 'image/*'},
+          )
+          .timeout(const Duration(seconds: 10));
 
-      return (response.statusCode == 200 && response.bodyBytes.isNotEmpty) 
-        ? response.bodyBytes 
-        : null;
+      return (response.statusCode == 200 && response.bodyBytes.isNotEmpty)
+          ? response.bodyBytes
+          : null;
     } catch (e) {
       return null;
     }
   }
 
-  static String _generateFileName(Map<String, dynamic> report, List<Map<String, dynamic>> users) {
+  static String _generateFileName(
+    Map<String, dynamic> report,
+    List<Map<String, dynamic>> users,
+  ) {
     final userName = _getUserNameFromReport(report, users);
     return 'Remito_${userName.replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}.pdf';
   }
 
-  static String _getUserNameFromReport(Map<String, dynamic> report, List<Map<String, dynamic>> users) {
+  static String _getUserNameFromReport(
+    Map<String, dynamic> report,
+    List<Map<String, dynamic>> users,
+  ) {
     final userId = report['userId']?.toString();
-    return _getUserNameFromList(userId, users) == 'Desconocido' ? 'Usuario' : _getUserNameFromList(userId, users);
+    return _getUserNameFromList(userId, users) == 'Desconocido'
+        ? 'Usuario'
+        : _getUserNameFromList(userId, users);
   }
 
-  static String _getUserNameFromList(String? userId, List<Map<String, dynamic>> users) {
+  static String _getUserNameFromList(
+    String? userId,
+    List<Map<String, dynamic>> users,
+  ) {
     if (userId == null || users.isEmpty) return 'Desconocido';
-    
+
     try {
       final user = users.firstWhere(
-        (user) => user['_id']?.toString() == userId || user['userId']?.toString() == userId,
+        (user) =>
+            user['_id']?.toString() == userId ||
+            user['userId']?.toString() == userId,
         orElse: () => <String, dynamic>{},
       );
       return user.isNotEmpty ? _extractUserNameStatic(user) : 'Desconocido';
@@ -153,7 +172,10 @@ class PDFDownloadHelper {
     }
   }
 
-  static Map<String, dynamic> _createSuccessResult(List<int> bytes, String fileName) {
+  static Map<String, dynamic> _createSuccessResult(
+    List<int> bytes,
+    String fileName,
+  ) {
     return {
       'success': true,
       'bytes': bytes,
@@ -163,16 +185,12 @@ class PDFDownloadHelper {
   }
 
   static Map<String, dynamic> _createErrorResult(String error) {
-    return {
-      'success': false,
-      'bytes': null,
-      'fileName': null,
-      'error': error,
-    };
+    return {'success': false, 'bytes': null, 'fileName': null, 'error': error};
   }
 
   // Helper function for PDF generation
-  static String _extractUserNameStatic(Map<String, dynamic> user) => DataHelpers.extractUserName(user);
+  static String _extractUserNameStatic(Map<String, dynamic> user) =>
+      DataHelpers.extractUserName(user);
 
   // Función para generar el PDF del reporte
   static Future<pw.Document> _generateReportPDFStatic(
@@ -182,7 +200,8 @@ class PDFDownloadHelper {
     final users = data['users'] as List<Map<String, dynamic>>;
     final imageBytes = data['imageBytes'] as List<List<int>>?;
     final inventory = data['inventory'] as List<Map<String, dynamic>>;
-    final recoveredInventory = (data['recoveredInventory'] as List<Map<String, dynamic>>?) ?? [];
+    final recoveredInventory =
+        (data['recoveredInventory'] as List<Map<String, dynamic>>?) ?? [];
 
     final pdf = pw.Document();
 
@@ -208,21 +227,28 @@ class PDFDownloadHelper {
           'Tipo de Trabajo',
           report['typeOfWork']?.toString() ?? 'N/A',
         ),
-        _buildPDFInfoRow('Fecha de Inicio', DataHelpers.formatTime(report['startTime'])),
-        _buildPDFInfoRow('Fecha de Fin', DataHelpers.formatTime(report['endTime'])),
+        _buildPDFInfoRow(
+          'Fecha de Inicio',
+          DataHelpers.formatTime(report['startTime']),
+        ),
+        _buildPDFInfoRow(
+          'Fecha de Fin',
+          DataHelpers.formatTime(report['endTime']),
+        ),
         _buildPDFInfoRow(
           'Tiempo Total',
-          DataHelpers.calculateWorkingTime(report['startTime'], report['endTime']),
+          DataHelpers.calculateWorkingTime(
+            report['startTime'],
+            report['endTime'],
+          ),
         ),
         _buildPDFInfoRow(
           'Conectividad',
           report['connectivity']?.toString() ?? 'N/A',
         ),
-        if (report['cameraName'] != null && report['cameraName'].toString().isNotEmpty)
-          _buildPDFInfoRow(
-            'Cámara',
-            report['cameraName'].toString(),
-          ),
+        if (report['cameraName'] != null &&
+            report['cameraName'].toString().isNotEmpty)
+          _buildPDFInfoRow('Cámara', report['cameraName'].toString()),
       ]),
       pw.SizedBox(height: 16),
     ];
@@ -232,7 +258,10 @@ class PDFDownloadHelper {
     if (location != null) {
       pdfWidgets.addAll([
         _buildPDFInfoSection('Ubicación', [
-          _buildPDFInfoRow('Coordenadas', DataHelpers.getLocationText(location) ?? 'N/A'),
+          _buildPDFInfoRow(
+            'Coordenadas',
+            DataHelpers.getLocationText(location) ?? 'N/A',
+          ),
         ]),
         pw.SizedBox(height: 16),
       ]);
@@ -259,7 +288,11 @@ class PDFDownloadHelper {
     final supplies = report['supplies'];
     if (supplies != null && (supplies as List).isNotEmpty) {
       pdfWidgets.addAll([
-        _buildPDFMaterialsSimpleSection(supplies, inventory, recoveredInventory),
+        _buildPDFMaterialsSimpleSection(
+          supplies,
+          inventory,
+          recoveredInventory,
+        ),
         pw.SizedBox(height: 16),
       ]);
     }
@@ -394,7 +427,8 @@ class PDFDownloadHelper {
       );
 
       if (recoveredMaterial.isNotEmpty) {
-        final name = recoveredMaterial['name']?.toString() ?? 'Material ID: $materialId';
+        final name =
+            recoveredMaterial['name']?.toString() ?? 'Material ID: $materialId';
         return name; // Material recuperado sin prefijo para PDF
       }
 
@@ -501,7 +535,6 @@ class PDFDownloadHelper {
     ]);
   }
 
-
   static pw.Widget _buildPDFInfoSection(
     String title,
     List<pw.Widget> children,
@@ -553,5 +586,4 @@ class PDFDownloadHelper {
       ),
     );
   }
-
 }

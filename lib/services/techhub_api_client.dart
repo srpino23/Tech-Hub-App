@@ -8,7 +8,9 @@ class TechHubApiClient {
   static const String baseUrl =
       'https://74280601d366.sn.mynetname.net/test/api';
   static const Duration timeoutDuration = Duration(seconds: 30);
-  static const Duration longTimeoutDuration = Duration(minutes: 5); // Para operaciones con archivos
+  static const Duration longTimeoutDuration = Duration(
+    minutes: 5,
+  ); // Para operaciones con archivos
 
   static const Map<String, String> _jsonHeaders = {
     'Content-Type': 'application/json',
@@ -107,7 +109,8 @@ class TechHubApiClient {
     required String teamId,
     required int page,
     required int limit,
-    String? userId, // Nuevo parámetro opcional para filtrar por usuario específico
+    String?
+    userId, // Nuevo parámetro opcional para filtrar por usuario específico
   }) async {
     try {
       String url = '$baseUrl/report/getReportsByTeam?page=$page&limit=$limit';
@@ -185,8 +188,9 @@ class TechHubApiClient {
     }
   }
 
-  static Future<ApiResponse<List<Map<String, dynamic>>>>
-  getRecoveredInventory({String? status}) async {
+  static Future<ApiResponse<List<Map<String, dynamic>>>> getRecoveredInventory({
+    String? status,
+  }) async {
     try {
       String url = '$baseUrl/recoveredInventory/getRecoveredInventory';
       if (status != null) {
@@ -194,10 +198,7 @@ class TechHubApiClient {
       }
 
       final response = await http
-          .get(
-            Uri.parse(url),
-            headers: _jsonHeaders,
-          )
+          .get(Uri.parse(url), headers: _jsonHeaders)
           .timeout(timeoutDuration);
 
       return _handleResponse<List<Map<String, dynamic>>>(
@@ -369,7 +370,8 @@ class TechHubApiClient {
     }
   }
 
-  static Future<ApiResponse<Map<String, dynamic>>> returnReconditionedToRecovered({
+  static Future<ApiResponse<Map<String, dynamic>>>
+  returnReconditionedToRecovered({
     required String change,
     required String materialId,
     required int quantity,
@@ -423,10 +425,7 @@ class TechHubApiClient {
     String? originalMaterialId,
   }) async {
     try {
-      final body = <String, dynamic>{
-        'name': name,
-        'quantity': quantity,
-      };
+      final body = <String, dynamic>{'name': name, 'quantity': quantity};
       if (originalMaterialId != null) {
         body['originalMaterialId'] = originalMaterialId;
       }
@@ -496,7 +495,10 @@ class TechHubApiClient {
           .post(
             Uri.parse('$baseUrl/recoveredInventory/deleteAddition'),
             headers: _jsonHeaders,
-            body: json.encode({'materialId': materialId, 'additionId': additionId}),
+            body: json.encode({
+              'materialId': materialId,
+              'additionId': additionId,
+            }),
           )
           .timeout(timeoutDuration);
 
@@ -588,7 +590,9 @@ class TechHubApiClient {
     try {
       final response = await http
           .get(
-            Uri.parse('$baseUrl/recoveredInventory/getTeamMaterialDetails/$teamId/$materialName'),
+            Uri.parse(
+              '$baseUrl/recoveredInventory/getTeamMaterialDetails/$teamId/$materialName',
+            ),
             headers: _jsonHeaders,
           )
           .timeout(timeoutDuration);
@@ -703,7 +707,11 @@ class TechHubApiClient {
           .post(
             Uri.parse('$baseUrl/team/moveToAnotherTeam'),
             headers: _jsonHeaders,
-            body: json.encode({'teamId': teamId, 'userId': userId, 'newTeamId': newTeamId}),
+            body: json.encode({
+              'teamId': teamId,
+              'userId': userId,
+              'newTeamId': newTeamId,
+            }),
           )
           .timeout(timeoutDuration);
 
@@ -751,7 +759,6 @@ class TechHubApiClient {
       return ApiResponse.error(_getErrorMessage(e));
     }
   }
-
 
   // Report endpoints
   static Future<ApiResponse<ReportResponse>> createReport({
@@ -851,76 +858,87 @@ class TechHubApiClient {
     List<dynamic>? images,
   }) async {
     try {
-      return await _retryOperation(() async {
-        var request = http.MultipartRequest(
-          'POST',
-          Uri.parse('$baseUrl/report/finishReport'),
-        );
+      return await _retryOperation(
+        () async {
+          var request = http.MultipartRequest(
+            'POST',
+            Uri.parse('$baseUrl/report/finishReport'),
+          );
 
-        // Add form fields
-        request.fields['reportId'] = reportId;
-        request.fields['status'] = status;
-        request.fields['teamId'] = teamId;
+          // Add form fields
+          request.fields['reportId'] = reportId;
+          request.fields['status'] = status;
+          request.fields['teamId'] = teamId;
 
-        if (supplies != null) request.fields['supplies'] = supplies;
-        if (toDo != null) request.fields['toDo'] = toDo;
-        if (typeOfWork != null) request.fields['typeOfWork'] = typeOfWork;
-        if (endTime != null) request.fields['endTime'] = endTime;
-        if (location != null) request.fields['location'] = location;
-        if (connectivity != null) request.fields['connectivity'] = connectivity;
-        if (cameraName != null) request.fields['cameraName'] = cameraName;
-        if (db != null) request.fields['db'] = db;
-        if (buffers != null) request.fields['buffers'] = buffers;
-        if (bufferColor != null) request.fields['bufferColor'] = bufferColor;
-        if (hairColor != null) request.fields['hairColor'] = hairColor;
-        if (ap != null) request.fields['ap'] = ap;
-        if (st != null) request.fields['st'] = st;
-        if (ccq != null) request.fields['ccq'] = ccq;
+          if (supplies != null) request.fields['supplies'] = supplies;
+          if (toDo != null) request.fields['toDo'] = toDo;
+          if (typeOfWork != null) request.fields['typeOfWork'] = typeOfWork;
+          if (endTime != null) request.fields['endTime'] = endTime;
+          if (location != null) request.fields['location'] = location;
+          if (connectivity != null)
+            request.fields['connectivity'] = connectivity;
+          if (cameraName != null) request.fields['cameraName'] = cameraName;
+          if (db != null) request.fields['db'] = db;
+          if (buffers != null) request.fields['buffers'] = buffers;
+          if (bufferColor != null) request.fields['bufferColor'] = bufferColor;
+          if (hairColor != null) request.fields['hairColor'] = hairColor;
+          if (ap != null) request.fields['ap'] = ap;
+          if (st != null) request.fields['st'] = st;
+          if (ccq != null) request.fields['ccq'] = ccq;
 
-        // Add images if provided
-        if (images != null) {
-          for (int i = 0; i < images.length; i++) {
-            final image = images[i];
-            if (image is File) {
-              // Handle File objects (mobile/desktop)
-              final file = await http.MultipartFile.fromPath(
-                'images',
-                image.path,
-              );
-              request.files.add(file);
-            } else if (image.runtimeType.toString().contains('WebFileWrapper')) {
-              // Handle legacy web files
-              final bytes = await (image as dynamic).readAsBytes() as List<int>;
-              final file = http.MultipartFile.fromBytes(
-                'images',
-                bytes,
-                filename: (image as dynamic).fileName as String,
-              );
-              request.files.add(file);
-            } else if (image is PlatformFile) {
-              // Handle PlatformFile (new universal approach)
-              final platformFile = image;
-              if (platformFile.bytes != null && platformFile.bytes!.isNotEmpty) {
-                final file = http.MultipartFile.fromBytes(
+          // Add images if provided
+          if (images != null) {
+            for (int i = 0; i < images.length; i++) {
+              final image = images[i];
+              if (image is File) {
+                // Handle File objects (mobile/desktop)
+                final file = await http.MultipartFile.fromPath(
                   'images',
-                  platformFile.bytes!,
-                  filename: platformFile.name,
+                  image.path,
                 );
                 request.files.add(file);
+              } else if (image.runtimeType.toString().contains(
+                'WebFileWrapper',
+              )) {
+                // Handle legacy web files
+                final bytes =
+                    await (image as dynamic).readAsBytes() as List<int>;
+                final file = http.MultipartFile.fromBytes(
+                  'images',
+                  bytes,
+                  filename: (image as dynamic).fileName as String,
+                );
+                request.files.add(file);
+              } else if (image is PlatformFile) {
+                // Handle PlatformFile (new universal approach)
+                final platformFile = image;
+                if (platformFile.bytes != null &&
+                    platformFile.bytes!.isNotEmpty) {
+                  final file = http.MultipartFile.fromBytes(
+                    'images',
+                    platformFile.bytes!,
+                    filename: platformFile.name,
+                  );
+                  request.files.add(file);
+                }
               }
             }
           }
-        }
 
-        // Usar timeout más largo para operaciones con archivos
-        final streamedResponse = await request.send().timeout(longTimeoutDuration);
-        final response = await http.Response.fromStream(streamedResponse);
+          // Usar timeout más largo para operaciones con archivos
+          final streamedResponse = await request.send().timeout(
+            longTimeoutDuration,
+          );
+          final response = await http.Response.fromStream(streamedResponse);
 
-        return _handleResponse<ReportResponse>(
-          response,
-          (data) => ReportResponse.fromJson(data),
-        );
-      }, maxRetries: 2, delay: const Duration(seconds: 3));
+          return _handleResponse<ReportResponse>(
+            response,
+            (data) => ReportResponse.fromJson(data),
+          );
+        },
+        maxRetries: 2,
+        delay: const Duration(seconds: 3),
+      );
     } catch (e) {
       return ApiResponse.error(_getErrorMessage(e));
     }
@@ -957,17 +975,23 @@ class TechHubApiClient {
         if (response.statusCode == 204 || response.body.isEmpty) {
           // For 204 responses, return a success with empty data or default value
           if (T == Map<String, dynamic>) {
-            return ApiResponse.success(converter({'success': true, 'message': 'Operation completed successfully'}));
+            return ApiResponse.success(
+              converter({
+                'success': true,
+                'message': 'Operation completed successfully',
+              }),
+            );
           }
           return ApiResponse.success(converter({}));
         }
-        
+
         final data = json.decode(response.body);
         return ApiResponse.success(converter(data));
       } else {
         try {
           final errorData = json.decode(response.body);
-          final message = errorData['message'] ?? 'Error ${response.statusCode}';
+          final message =
+              errorData['message'] ?? 'Error ${response.statusCode}';
           return ApiResponse.error(message);
         } catch (e) {
           return ApiResponse.error('Error ${response.statusCode}');
@@ -997,7 +1021,7 @@ class TechHubApiClient {
     Duration delay = const Duration(seconds: 2),
   }) async {
     int attempts = 0;
-    
+
     while (attempts < maxRetries) {
       try {
         return await operation();
@@ -1006,20 +1030,20 @@ class TechHubApiClient {
         if (attempts >= maxRetries) {
           rethrow;
         }
-        
+
         // Solo hacer retry en casos específicos
-        if (e.toString().contains('TimeoutException') || 
+        if (e.toString().contains('TimeoutException') ||
             e.toString().contains('SocketException') ||
             e.toString().contains('Connection reset')) {
           await Future.delayed(delay);
           continue;
         }
-        
+
         // Para otros errores, no hacer retry
         rethrow;
       }
     }
-    
+
     throw Exception('Max retries exceeded');
   }
 }
