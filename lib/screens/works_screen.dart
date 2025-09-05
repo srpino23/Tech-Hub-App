@@ -104,7 +104,11 @@ class _WorksScreenState extends State<WorksScreen> {
     }
 
     // Cargar usuarios e inventarios primero para que estén disponibles cuando se carguen los reportes
-    await Future.wait([_loadUsers(), _loadInventory(), _loadRecoveredInventory()]);
+    await Future.wait([
+      _loadUsers(),
+      _loadInventory(),
+      _loadRecoveredInventory(),
+    ]);
 
     // Cargar datos iniciales rápido, luego el resto en segundo plano
     await Future.wait([_loadTasksInitial(), _loadReportsInitial()]);
@@ -485,9 +489,9 @@ class _WorksScreenState extends State<WorksScreen> {
   }
 
   String _getUserNameById(String userId) {
-    return !_isUsersLoaded || _users.isEmpty 
-      ? 'Cargando...'
-      : DataHelpers.getUserNameById(userId, _users);
+    return !_isUsersLoaded || _users.isEmpty
+        ? 'Cargando...'
+        : DataHelpers.getUserNameById(userId, _users);
   }
 
   String _getMaterialNameById(String materialId) {
@@ -496,18 +500,25 @@ class _WorksScreenState extends State<WorksScreen> {
     }
 
     // Buscar primero en el inventario principal
-    String materialName = DataHelpers.getMaterialNameById(materialId, _inventory);
-    
+    String materialName = DataHelpers.getMaterialNameById(
+      materialId,
+      _inventory,
+    );
+
     // Si no se encuentra en el inventario principal, buscar en el recuperado
-    if (materialName == 'Material desconocido' && _recoveredInventory.isNotEmpty) {
-      materialName = DataHelpers.getMaterialNameById(materialId, _recoveredInventory);
-      
+    if (materialName == 'Material desconocido' &&
+        _recoveredInventory.isNotEmpty) {
+      materialName = DataHelpers.getMaterialNameById(
+        materialId,
+        _recoveredInventory,
+      );
+
       // Si se encuentra en el inventario recuperado, agregar un prefijo para identificarlo
       if (materialName != 'Material desconocido') {
         materialName = '♻️ $materialName';
       }
     }
-    
+
     return materialName;
   }
 
@@ -585,11 +596,13 @@ class _WorksScreenState extends State<WorksScreen> {
             final location = report['location']?.toString().toLowerCase();
             final connectivity =
                 report['connectivity']?.toString().toLowerCase();
+            final cameraName = report['cameraName']?.toString().toLowerCase();
 
             if ((typeOfWork?.contains(searchLower) ?? false) ||
                 (toDo?.contains(searchLower) ?? false) ||
                 (location?.contains(searchLower) ?? false) ||
-                (connectivity?.contains(searchLower) ?? false)) {
+                (connectivity?.contains(searchLower) ?? false) ||
+                (cameraName?.contains(searchLower) ?? false)) {
               matchesSearch = true;
             }
 
@@ -627,7 +640,10 @@ class _WorksScreenState extends State<WorksScreen> {
     });
 
     // Si se cambia a remitos y los usuarios o inventarios no están cargados, cargarlos
-    if (section == 'remitos' && (!_isUsersLoaded || !_isInventoryLoaded || !_isRecoveredInventoryLoaded)) {
+    if (section == 'remitos' &&
+        (!_isUsersLoaded ||
+            !_isInventoryLoaded ||
+            !_isRecoveredInventoryLoaded)) {
       if (!_isUsersLoaded) _loadUsers();
       if (!_isInventoryLoaded) _loadInventory();
       if (!_isRecoveredInventoryLoaded) _loadRecoveredInventory();
@@ -1286,17 +1302,33 @@ class _WorksScreenState extends State<WorksScreen> {
                     color: Colors.grey.shade500,
                   ),
                   const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      _getLocationText(_getTaskLocation(task)) ??
-                          'Sin ubicación',
+                  // Location text
+                  Text(
+                    _getLocationText(_getTaskLocation(task)) ?? 'Sin ubicación',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  // Camera name (only for reports) - right after location
+                  if (_selectedSection == 'remitos' &&
+                      task['cameraName'] != null &&
+                      task['cameraName'].toString().isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    Icon(
+                      LucideIcons.camera,
+                      size: 12,
+                      color: Colors.grey.shade500,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      task['cameraName'].toString(),
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.grey.shade500,
                       ),
-                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
+                  ],
+                  // Spacer to push date to the right
+                  const Spacer(),
                   // Date on the right
                   Text(
                     _formatDate(_getTaskDate(task)),
@@ -1430,7 +1462,8 @@ class _WorksScreenState extends State<WorksScreen> {
     return task['title']?.toString() ?? 'Sin título';
   }
 
-  String? _getLocationText(dynamic location) => DataHelpers.getLocationText(location);
+  String? _getLocationText(dynamic location) =>
+      DataHelpers.getLocationText(location);
 
   void _showTaskDetail(Map<String, dynamic> task) async {
     final taskToShow = task;
@@ -1881,7 +1914,8 @@ class _WorksScreenState extends State<WorksScreen> {
       );
     }
 
-    if (taskToShow['cameraName'] != null && taskToShow['cameraName'].toString().isNotEmpty) {
+    if (taskToShow['cameraName'] != null &&
+        taskToShow['cameraName'].toString().isNotEmpty) {
       details.add(
         _buildDetailRow(
           'Cámara',
@@ -2072,7 +2106,8 @@ class _WorksScreenState extends State<WorksScreen> {
     );
   }
 
-  String _translateStatus(String? status) => DataHelpers.translateStatus(status);
+  String _translateStatus(String? status) =>
+      DataHelpers.translateStatus(status);
 
   IconData _getStatusIcon(String statusText) {
     if (statusText.toLowerCase().contains('pendiente')) {
@@ -2471,7 +2506,8 @@ class _WorksScreenState extends State<WorksScreen> {
     );
   }
 
-  bool _hasLocationCoordinates(String? location) => DataHelpers.hasLocationCoordinates(location);
+  bool _hasLocationCoordinates(String? location) =>
+      DataHelpers.hasLocationCoordinates(location);
 
   Widget _buildMapSection(String location) {
     final parts = location.split(',');
@@ -2562,10 +2598,7 @@ class _WorksScreenState extends State<WorksScreen> {
           left: 12,
           right: 12,
           child: Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 8,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: 0.8),
               borderRadius: BorderRadius.circular(8),
@@ -2575,10 +2608,7 @@ class _WorksScreenState extends State<WorksScreen> {
                 Expanded(
                   child: Text(
                     '${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                    ),
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
                   ),
                 ),
                 GestureDetector(

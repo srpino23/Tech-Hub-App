@@ -21,7 +21,10 @@ class DataHelpers {
   }
 
   // Función unificada para obtener nombre de usuario por ID
-  static String getUserNameById(String userId, List<Map<String, dynamic>> users) {
+  static String getUserNameById(
+    String userId,
+    List<Map<String, dynamic>> users,
+  ) {
     if (users.isEmpty) return 'Cargando...';
 
     final user = users.firstWhere(
@@ -35,7 +38,10 @@ class DataHelpers {
   }
 
   // Función unificada para obtener nombre de material por ID
-  static String getMaterialNameById(String materialId, List<Map<String, dynamic>> inventory) {
+  static String getMaterialNameById(
+    String materialId,
+    List<Map<String, dynamic>> inventory,
+  ) {
     if (inventory.isEmpty) return 'Cargando...';
 
     final material = inventory.firstWhere(
@@ -43,15 +49,15 @@ class DataHelpers {
       orElse: () => <String, dynamic>{},
     );
 
-    return material.isNotEmpty 
-      ? material['name']?.toString() ?? 'Material desconocido'
-      : 'Material desconocido';
+    return material.isNotEmpty
+        ? material['name']?.toString() ?? 'Material desconocido'
+        : 'Material desconocido';
   }
 
   // Función unificada para formatear fechas
   static String formatDate(dynamic dateValue) {
     if (dateValue == null) return 'Sin fecha';
-    
+
     try {
       DateTime date;
       if (dateValue is DateTime) {
@@ -64,18 +70,8 @@ class DataHelpers {
         return 'Sin fecha';
       }
 
-      final now = DateTime.now();
-      final difference = now.difference(date);
-
-      if (difference.inDays == 0) {
-        return 'Hoy';
-      } else if (difference.inDays == 1) {
-        return 'Ayer';
-      } else if (difference.inDays < 7) {
-        return 'Hace ${difference.inDays} días';
-      } else {
-        return '${date.day}/${date.month}/${date.year}';
-      }
+      // Mostrar directamente la fecha en formato DD/MM/YYYY
+      return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
     } catch (e) {
       return 'Sin fecha';
     }
@@ -84,7 +80,7 @@ class DataHelpers {
   // Función unificada para formatear tiempo
   static String formatTime(dynamic timeValue) {
     if (timeValue == null) return 'N/A';
-    
+
     try {
       DateTime time;
       if (timeValue is DateTime) {
@@ -97,8 +93,10 @@ class DataHelpers {
         return 'N/A';
       }
 
-      final dateStr = '${time.day.toString().padLeft(2, '0')}/${time.month.toString().padLeft(2, '0')}/${time.year}';
-      final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+      final dateStr =
+          '${time.day.toString().padLeft(2, '0')}/${time.month.toString().padLeft(2, '0')}/${time.year}';
+      final timeStr =
+          '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
       return '$dateStr $timeStr';
     } catch (e) {
       return 'N/A';
@@ -190,27 +188,27 @@ class DataHelpers {
       }
 
       final duration = end.difference(start);
-      
+
       if (duration.isNegative) return 'N/A';
 
       // Formatear según la duración
       if (duration.inDays > 0) {
         final days = duration.inDays;
         final hours = duration.inHours % 24;
-        
+
         if (days == 1) {
-          return hours > 0 
-            ? '1 día, $hours ${hours == 1 ? 'hora' : 'horas'}'
-            : '1 día';
+          return hours > 0
+              ? '1 día, $hours ${hours == 1 ? 'hora' : 'horas'}'
+              : '1 día';
         } else {
-          return hours > 0 
-            ? '$days días, $hours ${hours == 1 ? 'hora' : 'horas'}'
-            : '$days días';
+          return hours > 0
+              ? '$days días, $hours ${hours == 1 ? 'hora' : 'horas'}'
+              : '$days días';
         }
       } else if (duration.inHours > 0) {
         final hours = duration.inHours;
         final minutes = duration.inMinutes % 60;
-        
+
         if (minutes > 0) {
           return '$hours ${hours == 1 ? 'hora' : 'horas'}, $minutes ${minutes == 1 ? 'minuto' : 'minutos'}';
         } else {
