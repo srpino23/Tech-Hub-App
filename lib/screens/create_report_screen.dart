@@ -390,24 +390,18 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         final materialId = teamMaterial['materialId']?.toString();
         final quantity = teamMaterial['quantity']?.toString() ?? '0';
         var materialName = teamMaterial['materialName']?.toString();
+        final isReconditioned = teamMaterial['isReconditioned'] == true;
 
-        // El materialName debería venir del inventario del equipo según tu estructura
-        if (materialId != null) {
-          // Si ya tiene nombre válido, usarlo
-          if (materialName != null && materialName.isNotEmpty) {
-            materialsWithNames.add({
-              'materialId': materialId,
-              'materialName': materialName,
-              'quantity': quantity,
-            });
-          } else {
-            // Si no hay materialName, buscar en inventarios principales
-            await _loadMaterialNameFromInventories(
-              materialId,
-              quantity,
-              materialsWithNames,
-            );
-          }
+        if (materialId != null && materialName != null && materialName.isNotEmpty) {
+          // Agregar "(Recuperado)" al nombre si es un material reacondicionado
+          final displayName = isReconditioned ? '$materialName (Recuperado)' : materialName;
+          
+          materialsWithNames.add({
+            'materialId': materialId,
+            'materialName': displayName,
+            'quantity': quantity,
+            'isRecovered': isReconditioned,
+          });
         }
       }
 
@@ -429,63 +423,6 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     }
   }
 
-  Future<void> _loadMaterialNameFromInventories(
-    String materialId,
-    String quantity,
-    List<Map<String, dynamic>> materialsWithNames,
-  ) async {
-    try {
-      // Cargar inventario principal para buscar el nombre
-      final mainInventoryResponse = await TechHubApiClient.getInventory();
-      final recoveredInventoryResponse =
-          await TechHubApiClient.getRecoveredInventory();
-
-      final mainInventory =
-          mainInventoryResponse.isSuccess
-              ? (mainInventoryResponse.data ?? [])
-              : <Map<String, dynamic>>[];
-      final recoveredInventory =
-          recoveredInventoryResponse.isSuccess
-              ? (recoveredInventoryResponse.data ?? [])
-              : <Map<String, dynamic>>[];
-
-      String? materialName;
-
-      // Buscar en inventario principal
-      for (var mainMaterial in mainInventory) {
-        if (mainMaterial['_id']?.toString() == materialId) {
-          materialName = mainMaterial['name']?.toString();
-          break;
-        }
-      }
-
-      // Si no se encontró, buscar en inventario recuperado
-      if (materialName == null || materialName.isEmpty) {
-        for (var recoveredMaterial in recoveredInventory) {
-          if (recoveredMaterial['_id']?.toString() == materialId) {
-            materialName =
-                '${recoveredMaterial['name']?.toString()} (Recuperado)';
-            break;
-          }
-        }
-      }
-
-      if (materialName != null && materialName.isNotEmpty) {
-        materialsWithNames.add({
-          'materialId': materialId,
-          'materialName': materialName,
-          'quantity': quantity,
-        });
-      }
-    } catch (e) {
-      // Si hay error buscando el nombre, agregar con ID como fallback
-      materialsWithNames.add({
-        'materialId': materialId,
-        'materialName': 'Material ID: $materialId',
-        'quantity': quantity,
-      });
-    }
-  }
 
   Future<void> _loadCameras() async {
     if (!mounted) return;
@@ -2845,24 +2782,29 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                       final selectedQuantity =
                           _materialQuantities[materialId] ?? 0;
 
+                      final isRecovered = material['isRecovered'] == true;
+                      
                       return Container(
                         margin: const EdgeInsets.only(bottom: 12),
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color:
-                              selectedQuantity > 0
-                                  ? const Color(
-                                    0xFF1E293B,
-                                  ).withValues(alpha: 0.05)
-                                  : Colors.grey[50],
+                          color: selectedQuantity > 0
+                              ? (isRecovered 
+                                  ? Colors.green.withValues(alpha: 0.05)
+                                  : const Color(0xFF1E293B).withValues(alpha: 0.05))
+                              : (isRecovered 
+                                  ? Colors.green[25]
+                                  : Colors.grey[50]),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color:
-                                selectedQuantity > 0
-                                    ? const Color(
-                                      0xFF1E293B,
-                                    ).withValues(alpha: 0.3)
-                                    : Colors.grey[200]!,
+                            color: selectedQuantity > 0
+                                ? (isRecovered 
+                                    ? Colors.green.withValues(alpha: 0.4)
+                                    : const Color(0xFF1E293B).withValues(alpha: 0.3))
+                                : (isRecovered 
+                                    ? Colors.green[200]!
+                                    : Colors.grey[200]!),
+                            width: isRecovered ? 2 : 1,
                           ),
                         ),
                         child: Column(
@@ -2874,15 +2816,39 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        material['materialName'] ?? 'Material',
-                                        style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.grey[800],
-                                        ),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
+                                      Row(
+                                        children: [
+                                          // Icono para materiales recuperados
+                                          if (isRecovered) ...[
+                                            Container(
+                                              margin: const EdgeInsets.only(right: 8),
+                                              padding: const EdgeInsets.all(4),
+                                              decoration: BoxDecoration(
+                                                color: Colors.green[100],
+                                                borderRadius: BorderRadius.circular(6),
+                                              ),
+                                              child: Icon(
+                                                LucideIcons.recycle,
+                                                size: 14,
+                                                color: Colors.green[700],
+                                              ),
+                                            ),
+                                          ],
+                                          Expanded(
+                                            child: Text(
+                                              material['materialName'] ?? 'Material',
+                                              style: TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w600,
+                                                color: isRecovered
+                                                    ? Colors.green[800]
+                                                    : Colors.grey[800],
+                                              ),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
