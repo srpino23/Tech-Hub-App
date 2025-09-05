@@ -260,6 +260,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   final TextEditingController _cameraSearchController = TextEditingController();
   bool _isLoadingCameras = false;
   List<Map<String, dynamic>> _filteredCameras = [];
+  bool _isOutOfZone = false;
+  final TextEditingController _outOfZoneDescriptionController = TextEditingController();
 
   // Images
   final List<UniversalFile> _selectedImages = [];
@@ -307,6 +309,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     _stIpController.addListener(_onFormChanged);
     _ccqController.addListener(_onFormChanged);
     _cameraSearchController.addListener(_filterCameras);
+    _outOfZoneDescriptionController.addListener(_onFormChanged);
   }
 
   @override
@@ -323,6 +326,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     _stIpController.dispose();
     _ccqController.dispose();
     _cameraSearchController.dispose();
+    _outOfZoneDescriptionController.dispose();
     super.dispose();
   }
 
@@ -1024,7 +1028,9 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         location:
             '${_currentLocation!.latitude},${_currentLocation!.longitude}',
         connectivity: _connectivity,
-        cameraName: _selectedCameraName,
+        cameraName: _isOutOfZone 
+            ? 'Fuera de zona: ${_outOfZoneDescriptionController.text}'
+            : _selectedCameraName,
         db:
             _connectivity == 'Fibra óptica' && _dbController.text.isNotEmpty
                 ? _dbController.text
@@ -1135,7 +1141,16 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
           _descriptionController.text = report.toDo ?? '';
           _typeOfWork = report.typeOfWork ?? _typeOfWorkOptions.first;
           _connectivity = report.connectivity ?? _connectivityOptions.first;
-          _selectedCameraName = report.cameraName;
+          // Manejar cámara o fuera de zona
+          if (report.cameraName != null && report.cameraName!.startsWith('Fuera de zona: ')) {
+            _isOutOfZone = true;
+            _selectedCameraName = null;
+            _outOfZoneDescriptionController.text = report.cameraName!.substring(15); // Remover "Fuera de zona: "
+          } else {
+            _isOutOfZone = false;
+            _selectedCameraName = report.cameraName;
+            _outOfZoneDescriptionController.clear();
+          }
 
           // Populate connectivity-specific fields
           if (report.connectivity == 'Fibra óptica') {
@@ -1284,7 +1299,9 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                 ? '${_currentLocation!.latitude},${_currentLocation!.longitude}'
                 : null,
         connectivity: _connectivity,
-        cameraName: _selectedCameraName,
+        cameraName: _isOutOfZone 
+            ? 'Fuera de zona: ${_outOfZoneDescriptionController.text}'
+            : _selectedCameraName,
         db:
             _connectivity == 'Fibra óptica' && _dbController.text.isNotEmpty
                 ? _dbController.text
@@ -1348,9 +1365,17 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     // Campo obligatorio: ubicación
     if (_currentLocation == null) return false;
 
-    // Campo obligatorio: cámara asociada
-    if (_selectedCameraName == null || _selectedCameraName!.isEmpty) {
-      return false;
+    // Campo obligatorio: cámara asociada O fuera de zona con descripción
+    if (!_isOutOfZone) {
+      // Si no está fuera de zona, debe tener cámara seleccionada
+      if (_selectedCameraName == null || _selectedCameraName!.isEmpty) {
+        return false;
+      }
+    } else {
+      // Si está fuera de zona, debe tener descripción
+      if (_outOfZoneDescriptionController.text.trim().isEmpty) {
+        return false;
+      }
     }
 
     // Validaciones específicas por tipo de conectividad
@@ -1397,6 +1422,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     _stIpController.clear();
     _ccqController.clear();
     _cameraSearchController.clear();
+    _outOfZoneDescriptionController.clear();
 
     // Resetear variables del formulario
     setState(() {
@@ -1406,6 +1432,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       _materialQuantities.clear();
       _selectedImages.clear();
       _selectedCameraName = null;
+      _isOutOfZone = false;
       _filteredCameras = _availableCameras;
       _isSubmitting = false;
       _currentReportId = null;
@@ -2169,8 +2196,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
           ),
           const SizedBox(height: 20),
 
-          // Buscador de cámaras
-          TextFormField(
+          // Buscador de cámaras (solo si no está fuera de zona)
+          if (!_isOutOfZone) TextFormField(
             controller: _cameraSearchController,
             decoration: InputDecoration(
               labelText: 'Buscar cámara...',
@@ -2443,8 +2470,112 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
               ),
           ],
 
-          // Mensaje de validación si no hay cámara seleccionada
-          if (_selectedCameraName == null)
+          if (!_isOutOfZone) const SizedBox(height: 20),
+
+          const SizedBox(height: 20),
+
+          // Checkbox para "Fuera de zona"
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: _isOutOfZone ? Colors.blue[50] : Colors.grey[50],
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _isOutOfZone ? Colors.blue[300]! : Colors.grey[300]!,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Transform.scale(
+                      scale: 1.2,
+                      child: Checkbox(
+                        value: _isOutOfZone,
+                        onChanged: (value) {
+                          setState(() {
+                            _isOutOfZone = value ?? false;
+                            if (!_isOutOfZone) {
+                              _outOfZoneDescriptionController.clear();
+                            } else {
+                              // Si marca "fuera de zona", limpiar cámara seleccionada
+                              _selectedCameraName = null;
+                              _cameraSearchController.clear();
+                              _filteredCameras = _availableCameras;
+                            }
+                          });
+                          _onFormChanged();
+                        },
+                        activeColor: Colors.blue[600],
+                        checkColor: Colors.white,
+                        side: BorderSide(color: Colors.grey[400]!),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Trabajo fuera de zona (no hay cámara asociada)',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: _isOutOfZone ? Colors.blue[700] : Colors.grey[700],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                
+                // Input de descripción cuando está fuera de zona
+                if (_isOutOfZone) ...[
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _outOfZoneDescriptionController,
+                    decoration: InputDecoration(
+                      labelText: 'Descripción de la zona *',
+                      hintText: 'Ej: Sector industrial, zona rural, etc.',
+                      labelStyle: TextStyle(
+                        color: Colors.blue[600],
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      hintStyle: TextStyle(color: Colors.grey[400], fontSize: 13),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: Colors.blue[300]!),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: Colors.blue[300]!),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(
+                          color: Colors.blue[600]!,
+                          width: 2,
+                        ),
+                      ),
+                      filled: true,
+                      fillColor: Colors.blue[25],
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 14,
+                      ),
+                    ),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey[800],
+                    ),
+                    maxLines: 2,
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // Mensaje de validación si no hay cámara seleccionada y no está fuera de zona
+          if (_selectedCameraName == null && !_isOutOfZone)
             Container(
               margin: const EdgeInsets.only(top: 16),
               padding: const EdgeInsets.all(16),
@@ -2463,7 +2594,39 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Debe seleccionar una cámara asociada al trabajo',
+                      'Debe seleccionar una cámara asociada al trabajo o marcar "Fuera de zona"',
+                      style: TextStyle(
+                        color: Colors.red[700],
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          // Mensaje de validación si está fuera de zona pero no hay descripción
+          if (_isOutOfZone && _outOfZoneDescriptionController.text.trim().isEmpty)
+            Container(
+              margin: const EdgeInsets.only(top: 16),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.red[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red[200]!),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    LucideIcons.alertTriangle,
+                    color: Colors.red[600],
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Debe especificar la descripción de la zona',
                       style: TextStyle(
                         color: Colors.red[700],
                         fontSize: 14,
