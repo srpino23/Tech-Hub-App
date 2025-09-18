@@ -21,6 +21,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String? _error;
   List<Map<String, dynamic>> _operationalHistory = [];
   List<Map<String, dynamic>> _cameras = [];
+  List<Map<String, dynamic>> _selectedLiableHistory = [];
+  bool _isLoadingLiableHistory = false;
 
   Map<String, int> _generalStatus = {
     'online': 0,
@@ -35,6 +37,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   DateTime? _startDate;
   DateTime? _endDate;
+  String? _selectedLiable;
 
   @override
   void initState() {
@@ -43,6 +46,94 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _endDate = DateTime.now();
     _startDate = _endDate!.subtract(const Duration(days: 30));
     _loadDashboardData();
+  }
+
+  Future<void> _loadLiableHistory(String liable) async {
+    if (!mounted) return;
+
+    setState(() {
+      _isLoadingLiableHistory = true;
+    });
+
+    try {
+      final response = await AnalyzerApiClient.getOperationalHistoryByLiable(liable: liable);
+      if (response.isSuccess && response.data != null && mounted) {
+        try {
+          final data = List<Map<String, dynamic>>.from(response.data!);
+          setState(() {
+            _selectedLiableHistory = data;
+            _isLoadingLiableHistory = false;
+          });
+          // Debug: imprimir información sobre los datos cargados
+          print('Datos cargados para equipo $liable: ${data.length} entradas');
+          if (data.isNotEmpty) {
+            print('Primera entrada: ${data.first}');
+            print('Campos disponibles: ${data.first.keys.toList()}');
+            print('generalOperability de primera entrada: ${data.first['generalOperability']}');
+          }
+        } catch (e) {
+          print('Error convirtiendo datos del equipo $liable: $e');
+          setState(() {
+            _selectedLiableHistory = [];
+            _isLoadingLiableHistory = false;
+          });
+        }
+      } else {
+        print('Respuesta fallida para equipo $liable: ${response.error}');
+        // Fallback: filtrar datos generales por equipo
+        if (mounted) {
+          final filteredData = _operationalHistory.where((entry) {
+            final liableOperability = entry['liableOperability'] as List<dynamic>? ?? [];
+            return liableOperability.any((e) => e['liable'] == liable);
+          }).map((entry) {
+            // Crear una entrada con solo la operatividad del equipo seleccionado
+            final liableOperability = entry['liableOperability'] as List<dynamic>? ?? [];
+            final liableEntry = liableOperability.firstWhere(
+              (e) => e['liable'] == liable,
+              orElse: () => null,
+            );
+            return {
+              ...entry,
+              'generalOperability': liableEntry?['percentage'] ?? 0,
+            };
+          }).toList();
+
+          setState(() {
+            _selectedLiableHistory = filteredData;
+            _isLoadingLiableHistory = false;
+          });
+
+          print('Datos filtrados para equipo $liable: ${filteredData.length} entradas');
+        }
+      }
+    } catch (e) {
+      print('Excepción cargando datos del equipo $liable: $e');
+      // Fallback: filtrar datos generales por equipo
+      if (mounted) {
+        final filteredData = _operationalHistory.where((entry) {
+          final liableOperability = entry['liableOperability'] as List<dynamic>? ?? [];
+          return liableOperability.any((e) => e['liable'] == liable);
+        }).map((entry) {
+          // Crear una entrada con solo la operatividad del equipo seleccionado
+          final liableOperability = entry['liableOperability'] as List<dynamic>? ?? [];
+          final liableEntry = liableOperability.firstWhere(
+            (e) => e['liable'] == liable,
+            orElse: () => null,
+          );
+          return {
+            ...entry,
+            'generalOperability': liableEntry?['percentage'] ?? 0,
+          };
+        }).toList();
+
+        setState(() {
+          _selectedLiableHistory = filteredData;
+          _isLoadingLiableHistory = false;
+        });
+
+        print('Datos filtrados (fallback) para equipo $liable: ${filteredData.length} entradas');
+      }
+    }
   }
 
   Future<void> _loadDashboardData() async {
@@ -62,22 +153,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final camerasResponse = results[1];
 
       if (historyResponse.isSuccess && historyResponse.data != null) {
-        _operationalHistory = List<Map<String, dynamic>>.from(
-          historyResponse.data!,
-        );
-        if (_operationalHistory.isNotEmpty) {
-          final latest = _operationalHistory.first;
-          _zoneOperability = List<Map<String, dynamic>>.from(
-            latest['zoneOperability'] ?? [],
-          );
-          _liableOperability = List<Map<String, dynamic>>.from(
-            latest['liableOperability'] ?? [],
-          );
+        try {
+          final data = List<Map<String, dynamic>>.from(historyResponse.data!);
+          _operationalHistory = data;
+          if (_operationalHistory.isNotEmpty) {
+            final latest = _operationalHistory.first;
+            _zoneOperability = List<Map<String, dynamic>>.from(
+              latest['zoneOperability'] ?? [],
+            );
+            _liableOperability = List<Map<String, dynamic>>.from(
+              latest['liableOperability'] ?? [],
+            );
+          } else {
+            _zoneOperability = [];
+            _liableOperability = [];
+          }
+        } catch (e) {
+          _operationalHistory = [];
+          _zoneOperability = [];
+          _liableOperability = [];
         }
+      } else {
+        _operationalHistory = [];
+        _zoneOperability = [];
+        _liableOperability = [];
       }
 
       if (camerasResponse.isSuccess && camerasResponse.data != null) {
-        _cameras = List<Map<String, dynamic>>.from(camerasResponse.data!);
+        try {
+          final data = List<Map<String, dynamic>>.from(camerasResponse.data!);
+          _cameras = data;
+          _calculateGeneralStatus();
+        } catch (e) {
+          _cameras = [];
+          _calculateGeneralStatus();
+        }
+      } else {
+        _cameras = [];
         _calculateGeneralStatus();
       }
 
@@ -91,6 +203,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         setState(() {
           _isLoading = false;
           _error = 'Error al cargar los datos: $e';
+          // Asegurar que las listas estén inicializadas
+          _operationalHistory = [];
+          _zoneOperability = [];
+          _liableOperability = [];
+          _selectedLiableHistory = [];
+          _cameras = [];
         });
       }
     }
@@ -527,7 +645,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                const Text(
+                Text(
                   'Historial de Operatividad',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
@@ -577,10 +695,96 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
             const SizedBox(height: 16),
+            // Selector de equipo
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    LucideIcons.users,
+                    size: 16,
+                    color: Colors.grey.shade600,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: DropdownButton<String>(
+                      value: _selectedLiable,
+                      hint: Text(
+                        'Seleccionar equipo',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade700,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      isExpanded: true,
+                      underline: SizedBox(),
+                      items: [
+                        DropdownMenuItem<String>(
+                          value: null,
+                          child: Text(
+                            'Todos los equipos',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade700,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        ..._liableOperability.map((liable) => DropdownMenuItem<String>(
+                          value: liable['liable'],
+                          child: Text(
+                            liable['liable'] ?? 'Equipo desconocido',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade700,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        )),
+                      ],
+                      onChanged: (value) {
+                        print('Equipo seleccionado: $value');
+                        setState(() {
+                          _selectedLiable = value;
+                          if (value == null) {
+                            _selectedLiableHistory = [];
+                          }
+                        });
+                        if (value != null) {
+                          print('Cargando datos para equipo: $value');
+                          _loadLiableHistory(value);
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
             SizedBox(
               height: 250,
               child:
-                  _getFilteredOperationalHistory().isNotEmpty
+                  _isLoadingLiableHistory
+                      ? const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircularProgressIndicator(color: Colors.orange),
+                            SizedBox(height: 8),
+                            Text(
+                              'Cargando datos del equipo...',
+                              style: TextStyle(color: Colors.grey, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      )
+                      : _getFilteredOperationalHistory().isNotEmpty
                       ? LineChart(
                         LineChartData(
                           gridData: FlGridData(
@@ -768,19 +972,46 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final spots = <FlSpot>[];
     final filteredHistory = _getFilteredOperationalHistory();
 
+    print('Construyendo spots para ${_selectedLiable ?? 'todos los equipos'}');
+    print('Datos filtrados: ${filteredHistory.length} entradas');
+
+    if (filteredHistory.isEmpty) return spots;
+
     for (int i = 0; i < filteredHistory.length; i++) {
       final entry = filteredHistory[i];
       final operability = (entry['generalOperability'] ?? 0).toDouble();
+
+      // Debug adicional
+      if (i == 0) {
+        print('Procesando entrada $i: generalOperability = $operability');
+        print('Tipo de generalOperability: ${entry['generalOperability'].runtimeType}');
+        print('Entry completa: $entry');
+      }
+
       spots.add(FlSpot(i.toDouble(), operability));
+
+      if (i < 3) { // Solo imprimir las primeras 3 entradas para no saturar
+        print('Entrada $i: operability = $operability, full entry: $entry');
+      }
     }
 
+    print('Total spots generados: ${spots.length}');
     return spots;
   }
 
   List<Map<String, dynamic>> _getFilteredOperationalHistory() {
-    if (_startDate == null || _endDate == null) return _operationalHistory;
+    final sourceHistory = _selectedLiable != null && _selectedLiableHistory.isNotEmpty
+        ? _selectedLiableHistory
+        : _operationalHistory;
 
-    return _operationalHistory.where((entry) {
+    print('Usando fuente de datos: ${_selectedLiable != null && _selectedLiableHistory.isNotEmpty ? 'equipo específico' : 'datos generales'}');
+    print('Equipo seleccionado: $_selectedLiable');
+    print('Datos del equipo: ${_selectedLiableHistory.length} entradas');
+    print('Datos generales: ${_operationalHistory.length} entradas');
+
+    if (_startDate == null || _endDate == null) return sourceHistory;
+
+    return sourceHistory.where((entry) {
       try {
         final dateData = entry['date'];
         DateTime entryDate;
@@ -793,10 +1024,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           return false;
         }
 
-        return entryDate.isAfter(
+        final dateFilter = entryDate.isAfter(
               _startDate!.subtract(const Duration(days: 1)),
             ) &&
             entryDate.isBefore(_endDate!.add(const Duration(days: 1)));
+
+        return dateFilter;
       } catch (e) {
         return false;
       }

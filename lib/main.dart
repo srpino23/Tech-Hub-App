@@ -4,7 +4,6 @@ import 'auth_manager.dart';
 import 'screens/login.dart';
 import 'screens/home.dart';
 import 'services/location_service.dart';
-import 'services/notification_service.dart';
 
 void main() {
   runApp(const MainApp());
