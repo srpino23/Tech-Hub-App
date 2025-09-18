@@ -170,16 +170,16 @@ class TechHubApiClient {
     }
   }
 
-  // Delete task/report
-  static Future<ApiResponse<Map<String, dynamic>>> deleteTask({
-    required String taskId,
+  // Delete report
+  static Future<ApiResponse<Map<String, dynamic>>> deleteReport({
+    required String reportId,
   }) async {
     try {
       final response = await http
           .post(
-            Uri.parse('$baseUrl/task/deleteTask'),
+            Uri.parse('$baseUrl/report/deleteReport'),
             headers: _jsonHeaders,
-            body: json.encode({'taskId': taskId}),
+            body: json.encode({'reportId': reportId}),
           )
           .timeout(timeoutDuration);
 

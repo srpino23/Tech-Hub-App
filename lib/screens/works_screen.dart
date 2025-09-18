@@ -2792,7 +2792,7 @@ class _WorksScreenState extends State<WorksScreen> {
       );
 
       // Llamar al API para eliminar
-      final response = await TechHubApiClient.deleteTask(taskId: reportId);
+      final response = await TechHubApiClient.deleteReport(reportId: reportId);
 
       // Cerrar loading
       if (mounted) {
