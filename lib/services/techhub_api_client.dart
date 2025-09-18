@@ -170,6 +170,25 @@ class TechHubApiClient {
     }
   }
 
+  // Delete task/report
+  static Future<ApiResponse<Map<String, dynamic>>> deleteTask({
+    required String taskId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/task/deleteTask'),
+            headers: _jsonHeaders,
+            body: json.encode({'taskId': taskId}),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
   static Future<ApiResponse<List<Map<String, dynamic>>>> getInventory() async {
     try {
       final response = await http

@@ -57,10 +57,14 @@ class _WorksScreenState extends State<WorksScreen> {
   bool _isInventoryLoaded = false;
   bool _isRecoveredInventoryLoaded = false;
 
+  // ET team validation
+  bool _isETTeamUser = false;
+
   @override
   void initState() {
     super.initState();
     _mapController = MapController();
+    _checkETTeamStatus();
     _loadData();
     _searchController.addListener(_onSearchChanged);
   }
@@ -425,6 +429,13 @@ class _WorksScreenState extends State<WorksScreen> {
   Future<bool> _isETTeam() async {
     final teamName = widget.authManager.teamName;
     return teamName?.toLowerCase() == 'et';
+  }
+
+  void _checkETTeamStatus() async {
+    _isETTeamUser = await _isETTeam();
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _loadUsers() async {
@@ -1271,24 +1282,54 @@ class _WorksScreenState extends State<WorksScreen> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  // Task type badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: taskTypeColor,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      taskType,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
+                  // Task type badge y botón de eliminar para remitos terminados
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: taskTypeColor,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          taskType,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                       ),
-                    ),
+                      // Botón de eliminar solo para equipo ET en cualquier estado
+                      if (_selectedSection == 'remitos' && _isETTeamUser) ...[
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () => _deleteReport(task),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade100,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: Colors.red.shade300,
+                                width: 1,
+                              ),
+                            ),
+                            child: Icon(
+                              LucideIcons.trash2,
+                              size: 16,
+                              color: Colors.red.shade600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
@@ -1303,32 +1344,13 @@ class _WorksScreenState extends State<WorksScreen> {
                   ),
                   const SizedBox(width: 4),
                   // Location text
-                  Text(
-                    _getLocationText(_getTaskLocation(task)) ?? 'Sin ubicación',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-                    overflow: TextOverflow.ellipsis,
+                  Expanded(
+                    child: Text(
+                      _getLocationText(_getTaskLocation(task)) ?? 'Sin ubicación',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                  // Camera name (only for reports) - right after location
-                  if (_selectedSection == 'remitos' &&
-                      task['cameraName'] != null &&
-                      task['cameraName'].toString().isNotEmpty) ...[
-                    const SizedBox(width: 8),
-                    Icon(
-                      LucideIcons.camera,
-                      size: 12,
-                      color: Colors.grey.shade500,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      task['cameraName'].toString(),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade500,
-                      ),
-                    ),
-                  ],
-                  // Spacer to push date to the right
-                  const Spacer(),
                   // Date on the right
                   Text(
                     _formatDate(_getTaskDate(task)),
@@ -1336,6 +1358,32 @@ class _WorksScreenState extends State<WorksScreen> {
                   ),
                 ],
               ),
+              // Camera name in second row (only for reports)
+              if (_selectedSection == 'remitos' &&
+                  task['cameraName'] != null &&
+                  task['cameraName'].toString().isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(
+                      LucideIcons.camera,
+                      size: 12,
+                      color: Colors.grey.shade500,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        task['cameraName'].toString(),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -2652,6 +2700,142 @@ class _WorksScreenState extends State<WorksScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
+  }
+
+  Future<void> _deleteReport(Map<String, dynamic> report) async {
+    final reportId = report['_id']?.toString();
+    if (reportId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Error: No se encontró el ID del reporte'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Mostrar diálogo de confirmación
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                LucideIcons.trash2,
+                color: Colors.red.shade600,
+                size: 24,
+              ),
+              const SizedBox(width: 12),
+              const Text('Eliminar Remito'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('¿Estás seguro de que quieres eliminar este remito?'),
+              const SizedBox(height: 8),
+              Text(
+                'Esta acción no se puede deshacer y eliminará el remito permanentemente.',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey.shade600,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+              ),
+              child: const Text('Eliminar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      // Mostrar loading
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: Colors.orange),
+              SizedBox(height: 16),
+              Text('Eliminando remito...'),
+            ],
+          ),
+        ),
+      );
+
+      // Llamar al API para eliminar
+      final response = await TechHubApiClient.deleteTask(taskId: reportId);
+
+      // Cerrar loading
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+
+      if (response.isSuccess) {
+        // Mostrar éxito y recargar datos
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Remito eliminado exitosamente'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          _loadData(refresh: true);
+        }
+      } else {
+        // Mostrar error
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error al eliminar: ${response.error}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // Cerrar loading si está abierto
+      if (mounted) {
+        try {
+          Navigator.of(context).pop();
+        } catch (_) {}
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error inesperado: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _downloadReportPDF(Map<String, dynamic> report) async {
