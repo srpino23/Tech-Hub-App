@@ -53,12 +53,18 @@ class _WorksScreenState extends State<WorksScreen> {
   bool _isSearching = false;
 
   List<Map<String, dynamic>> _inventory = [];
+  List<Map<String, dynamic>> _recoveredInventory = [];
   bool _isInventoryLoaded = false;
+  bool _isRecoveredInventoryLoaded = false;
+
+  // ET team validation
+  bool _isETTeamUser = false;
 
   @override
   void initState() {
     super.initState();
     _mapController = MapController();
+    _checkETTeamStatus();
     _loadData();
     _searchController.addListener(_onSearchChanged);
   }
@@ -101,8 +107,12 @@ class _WorksScreenState extends State<WorksScreen> {
       _reports.clear();
     }
 
-    // Cargar usuarios e inventario primero para que estén disponibles cuando se carguen los reportes
-    await Future.wait([_loadUsers(), _loadInventory()]);
+    // Cargar usuarios e inventarios primero para que estén disponibles cuando se carguen los reportes
+    await Future.wait([
+      _loadUsers(),
+      _loadInventory(),
+      _loadRecoveredInventory(),
+    ]);
 
     // Cargar datos iniciales rápido, luego el resto en segundo plano
     await Future.wait([_loadTasksInitial(), _loadReportsInitial()]);
@@ -421,6 +431,13 @@ class _WorksScreenState extends State<WorksScreen> {
     return teamName?.toLowerCase() == 'et';
   }
 
+  void _checkETTeamStatus() async {
+    _isETTeamUser = await _isETTeam();
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   Future<void> _loadUsers() async {
     if (_isUsersLoaded) return; // Ya están cargados
 
@@ -463,16 +480,57 @@ class _WorksScreenState extends State<WorksScreen> {
     }
   }
 
+  Future<void> _loadRecoveredInventory() async {
+    if (_isRecoveredInventoryLoaded) return; // Ya está cargado
+
+    try {
+      final response = await TechHubApiClient.getRecoveredInventory();
+
+      if (response.isSuccess && response.data != null) {
+        if (mounted) {
+          setState(() {
+            _recoveredInventory = response.data!;
+            _isRecoveredInventoryLoaded = true;
+          });
+        }
+      }
+    } catch (e) {
+      // Silenciar errores de carga de inventario recuperado para no interrumpir la funcionalidad principal
+    }
+  }
+
   String _getUserNameById(String userId) {
-    return !_isUsersLoaded || _users.isEmpty 
-      ? 'Cargando...'
-      : DataHelpers.getUserNameById(userId, _users);
+    return !_isUsersLoaded || _users.isEmpty
+        ? 'Cargando...'
+        : DataHelpers.getUserNameById(userId, _users);
   }
 
   String _getMaterialNameById(String materialId) {
-    return !_isInventoryLoaded || _inventory.isEmpty
-      ? 'Cargando...'
-      : DataHelpers.getMaterialNameById(materialId, _inventory);
+    if (!_isInventoryLoaded || !_isRecoveredInventoryLoaded) {
+      return 'Cargando...';
+    }
+
+    // Buscar primero en el inventario principal
+    String materialName = DataHelpers.getMaterialNameById(
+      materialId,
+      _inventory,
+    );
+
+    // Si no se encuentra en el inventario principal, buscar en el recuperado
+    if (materialName == 'Material desconocido' &&
+        _recoveredInventory.isNotEmpty) {
+      materialName = DataHelpers.getMaterialNameById(
+        materialId,
+        _recoveredInventory,
+      );
+
+      // Si se encuentra en el inventario recuperado, agregar un prefijo para identificarlo
+      if (materialName != 'Material desconocido') {
+        materialName = '♻️ $materialName';
+      }
+    }
+
+    return materialName;
   }
 
   Future<void> _searchData() async {
@@ -549,11 +607,13 @@ class _WorksScreenState extends State<WorksScreen> {
             final location = report['location']?.toString().toLowerCase();
             final connectivity =
                 report['connectivity']?.toString().toLowerCase();
+            final cameraName = report['cameraName']?.toString().toLowerCase();
 
             if ((typeOfWork?.contains(searchLower) ?? false) ||
                 (toDo?.contains(searchLower) ?? false) ||
                 (location?.contains(searchLower) ?? false) ||
-                (connectivity?.contains(searchLower) ?? false)) {
+                (connectivity?.contains(searchLower) ?? false) ||
+                (cameraName?.contains(searchLower) ?? false)) {
               matchesSearch = true;
             }
 
@@ -590,10 +650,14 @@ class _WorksScreenState extends State<WorksScreen> {
       _filterTasks();
     });
 
-    // Si se cambia a remitos y los usuarios o inventario no están cargados, cargarlos
-    if (section == 'remitos' && (!_isUsersLoaded || !_isInventoryLoaded)) {
+    // Si se cambia a remitos y los usuarios o inventarios no están cargados, cargarlos
+    if (section == 'remitos' &&
+        (!_isUsersLoaded ||
+            !_isInventoryLoaded ||
+            !_isRecoveredInventoryLoaded)) {
       if (!_isUsersLoaded) _loadUsers();
       if (!_isInventoryLoaded) _loadInventory();
+      if (!_isRecoveredInventoryLoaded) _loadRecoveredInventory();
     }
 
     if (_searchQuery.isNotEmpty) {
@@ -1218,24 +1282,54 @@ class _WorksScreenState extends State<WorksScreen> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  // Task type badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: taskTypeColor,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      taskType,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
+                  // Task type badge y botón de eliminar para remitos terminados
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: taskTypeColor,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          taskType,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                       ),
-                    ),
+                      // Botón de eliminar solo para equipo ET en cualquier estado
+                      if (_selectedSection == 'remitos' && _isETTeamUser) ...[
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () => _deleteReport(task),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade100,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: Colors.red.shade300,
+                                width: 1,
+                              ),
+                            ),
+                            child: Icon(
+                              LucideIcons.trash2,
+                              size: 16,
+                              color: Colors.red.shade600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
@@ -1249,14 +1343,11 @@ class _WorksScreenState extends State<WorksScreen> {
                     color: Colors.grey.shade500,
                   ),
                   const SizedBox(width: 4),
+                  // Location text
                   Expanded(
                     child: Text(
-                      _getLocationText(_getTaskLocation(task)) ??
-                          'Sin ubicación',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade500,
-                      ),
+                      _getLocationText(_getTaskLocation(task)) ?? 'Sin ubicación',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -1267,6 +1358,32 @@ class _WorksScreenState extends State<WorksScreen> {
                   ),
                 ],
               ),
+              // Camera name in second row (only for reports)
+              if (_selectedSection == 'remitos' &&
+                  task['cameraName'] != null &&
+                  task['cameraName'].toString().isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(
+                      LucideIcons.camera,
+                      size: 12,
+                      color: Colors.grey.shade500,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        task['cameraName'].toString(),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -1393,7 +1510,8 @@ class _WorksScreenState extends State<WorksScreen> {
     return task['title']?.toString() ?? 'Sin título';
   }
 
-  String? _getLocationText(dynamic location) => DataHelpers.getLocationText(location);
+  String? _getLocationText(dynamic location) =>
+      DataHelpers.getLocationText(location);
 
   void _showTaskDetail(Map<String, dynamic> task) async {
     final taskToShow = task;
@@ -1844,7 +1962,8 @@ class _WorksScreenState extends State<WorksScreen> {
       );
     }
 
-    if (taskToShow['cameraName'] != null && taskToShow['cameraName'].toString().isNotEmpty) {
+    if (taskToShow['cameraName'] != null &&
+        taskToShow['cameraName'].toString().isNotEmpty) {
       details.add(
         _buildDetailRow(
           'Cámara',
@@ -2035,7 +2154,8 @@ class _WorksScreenState extends State<WorksScreen> {
     );
   }
 
-  String _translateStatus(String? status) => DataHelpers.translateStatus(status);
+  String _translateStatus(String? status) =>
+      DataHelpers.translateStatus(status);
 
   IconData _getStatusIcon(String statusText) {
     if (statusText.toLowerCase().contains('pendiente')) {
@@ -2434,7 +2554,8 @@ class _WorksScreenState extends State<WorksScreen> {
     );
   }
 
-  bool _hasLocationCoordinates(String? location) => DataHelpers.hasLocationCoordinates(location);
+  bool _hasLocationCoordinates(String? location) =>
+      DataHelpers.hasLocationCoordinates(location);
 
   Widget _buildMapSection(String location) {
     final parts = location.split(',');
@@ -2525,10 +2646,7 @@ class _WorksScreenState extends State<WorksScreen> {
           left: 12,
           right: 12,
           child: Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 8,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: 0.8),
               borderRadius: BorderRadius.circular(8),
@@ -2538,10 +2656,7 @@ class _WorksScreenState extends State<WorksScreen> {
                 Expanded(
                   child: Text(
                     '${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                    ),
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
                   ),
                 ),
                 GestureDetector(
@@ -2585,6 +2700,142 @@ class _WorksScreenState extends State<WorksScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
+  }
+
+  Future<void> _deleteReport(Map<String, dynamic> report) async {
+    final reportId = report['_id']?.toString();
+    if (reportId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Error: No se encontró el ID del reporte'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Mostrar diálogo de confirmación
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                LucideIcons.trash2,
+                color: Colors.red.shade600,
+                size: 24,
+              ),
+              const SizedBox(width: 12),
+              const Text('Eliminar Remito'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('¿Estás seguro de que quieres eliminar este remito?'),
+              const SizedBox(height: 8),
+              Text(
+                'Esta acción no se puede deshacer y eliminará el remito permanentemente.',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey.shade600,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+              ),
+              child: const Text('Eliminar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      // Mostrar loading
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: Colors.orange),
+              SizedBox(height: 16),
+              Text('Eliminando remito...'),
+            ],
+          ),
+        ),
+      );
+
+      // Llamar al API para eliminar
+      final response = await TechHubApiClient.deleteReport(reportId: reportId);
+
+      // Cerrar loading
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+
+      if (response.isSuccess) {
+        // Mostrar éxito y recargar datos
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Remito eliminado exitosamente'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          _loadData(refresh: true);
+        }
+      } else {
+        // Mostrar error
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error al eliminar: ${response.error}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // Cerrar loading si está abierto
+      if (mounted) {
+        try {
+          Navigator.of(context).pop();
+        } catch (_) {}
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error inesperado: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _downloadReportPDF(Map<String, dynamic> report) async {
@@ -2642,6 +2893,7 @@ class _WorksScreenState extends State<WorksScreen> {
           'users': _users,
           'imageUrls': imageUrls,
           'inventory': _inventory,
+          'recoveredInventory': _recoveredInventory,
         },
       );
 

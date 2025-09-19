@@ -20,19 +20,12 @@ class ProfileScreen extends StatelessWidget {
               shape: BoxShape.circle,
               color: Colors.orange.shade50,
             ),
-            child: const Icon(
-              LucideIcons.user,
-              size: 80,
-              color: Colors.orange,
-            ),
+            child: const Icon(LucideIcons.user, size: 80, color: Colors.orange),
           ),
           const SizedBox(height: 20),
           Text(
             authManager.userFullName ?? 'Usuario',
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
@@ -74,27 +67,17 @@ class ProfileScreen extends StatelessWidget {
             ),
             child: Column(
               children: [
-                Icon(
-                  LucideIcons.logOut,
-                  color: Colors.red.shade600,
-                  size: 32,
-                ),
+                Icon(LucideIcons.logOut, color: Colors.red.shade600, size: 32),
                 const SizedBox(height: 12),
                 const Text(
                   'Cerrar Sesión',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 const Text(
                   'Esto borrará todos los datos locales y cerrará la sesión actual',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey,
-                  ),
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),
                 const SizedBox(height: 16),
                 SizedBox(
@@ -158,7 +141,10 @@ class ProfileScreen extends StatelessWidget {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
               ),
               child: const Text('Cerrar Sesión'),
             ),

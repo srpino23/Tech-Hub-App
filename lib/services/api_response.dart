@@ -3,24 +3,14 @@ class ApiResponse<T> {
   final String? error;
   final bool isSuccess;
 
-  ApiResponse._({
-    this.data,
-    this.error,
-    required this.isSuccess,
-  });
+  ApiResponse._({this.data, this.error, required this.isSuccess});
 
   factory ApiResponse.success(T data) {
-    return ApiResponse._(
-      data: data,
-      isSuccess: true,
-    );
+    return ApiResponse._(data: data, isSuccess: true);
   }
 
   factory ApiResponse.error(String error) {
-    return ApiResponse._(
-      error: error,
-      isSuccess: false,
-    );
+    return ApiResponse._(error: error, isSuccess: false);
   }
 
   bool get hasData => isSuccess && data != null;
@@ -93,10 +83,12 @@ class ReportResponse {
       st: json['st']?.toString(),
       ccq: json['ccq']?.toString(),
       cameraName: json['cameraName']?.toString(),
-      imagesUrl: (json['imagesUrl'] as List<dynamic>?)
-          ?.map((e) => e.toString())
-          .toList(),
-      date: json['date'] != null ? DateTime.parse(json['date'].toString()) : null,
+      imagesUrl:
+          (json['imagesUrl'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList(),
+      date:
+          json['date'] != null ? DateTime.parse(json['date'].toString()) : null,
     );
   }
 

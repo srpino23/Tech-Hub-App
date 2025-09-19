@@ -50,32 +50,27 @@ class UniversalFile {
     try {
       final originalBytes = platformFile.bytes!;
 
+      // Verificar límite de tamaño (máximo 50MB para evitar crashes de memoria)
+      if (originalBytes.length > 50 * 1024 * 1024) {
+        if (kDebugMode) {
+          print('Imagen demasiado grande: ${originalBytes.length} bytes');
+        }
+        return;
+      }
+
       // Solo comprimir si la imagen es mayor a 500KB
       if (originalBytes.length < 500 * 1024) return;
 
-      final image = img.decodeImage(originalBytes);
-      if (image == null) return;
+      // Ejecutar compresión en un isolate separado para evitar bloquear la UI
+      final compressedBytes = await _compressInIsolate(
+        originalBytes,
+        extension.toLowerCase(),
+        quality,
+        maxWidth,
+      );
 
-      // Redimensionar si es muy grande
-      img.Image resizedImage = image;
-      if (maxWidth != null && image.width > maxWidth) {
-        resizedImage = img.copyResize(image, width: maxWidth);
-      } else if (image.width > 1920) {
-        resizedImage = img.copyResize(image, width: 1920);
-      }
-
-      // Comprimir según el formato
-      late Uint8List compressedBytes;
-      if (extension.toLowerCase() == 'png') {
-        compressedBytes = Uint8List.fromList(img.encodePng(resizedImage));
-      } else {
-        compressedBytes = Uint8List.fromList(
-          img.encodeJpg(resizedImage, quality: quality),
-        );
-      }
-
-      // Solo usar la versión comprimida si es significativamente más pequeña
-      if (compressedBytes.length < originalBytes.length * 0.8) {
+      if (compressedBytes != null &&
+          compressedBytes.length < originalBytes.length * 0.8) {
         _compressedBytes = compressedBytes;
       }
     } catch (e) {
@@ -83,6 +78,86 @@ class UniversalFile {
         print('Error comprimiendo imagen: $e');
       }
       // En caso de error, usar la imagen original
+    }
+  }
+
+  // Método auxiliar para comprimir en isolate separado
+  static Future<Uint8List?> _compressInIsolate(
+    Uint8List originalBytes,
+    String extension,
+    int quality,
+    int? maxWidth,
+  ) async {
+    try {
+      return await compute(_performCompression, {
+        'bytes': originalBytes,
+        'extension': extension,
+        'quality': quality,
+        'maxWidth': maxWidth,
+      });
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error en isolate de compresión: $e');
+      }
+      return null;
+    }
+  }
+
+  // Función estática para ejecutar en compute
+  static Uint8List? _performCompression(Map<String, dynamic> params) {
+    try {
+      final Uint8List originalBytes = params['bytes'];
+      final String extension = params['extension'];
+      final int quality = params['quality'];
+      final int? maxWidth = params['maxWidth'];
+
+      final image = img.decodeImage(originalBytes);
+      if (image == null) return null;
+
+      // Validar dimensiones para evitar crashes de memoria
+      if (image.width * image.height > 50000000) {
+        // ~50MP
+        if (kDebugMode) {
+          print('Imagen demasiado grande: ${image.width}x${image.height}');
+        }
+        return null;
+      }
+
+      // Redimensionar si es muy grande
+      img.Image resizedImage = image;
+      final targetWidth = maxWidth ?? (image.width > 1920 ? 1920 : image.width);
+
+      if (image.width > targetWidth) {
+        try {
+          resizedImage = img.copyResize(image, width: targetWidth);
+        } catch (e) {
+          if (kDebugMode) {
+            print('Error redimensionando imagen: $e');
+          }
+          return null;
+        }
+      }
+
+      // Comprimir según el formato con manejo de memoria mejorado
+      try {
+        if (extension == 'png') {
+          return Uint8List.fromList(img.encodePng(resizedImage, level: 6));
+        } else {
+          return Uint8List.fromList(
+            img.encodeJpg(resizedImage, quality: quality),
+          );
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('Error codificando imagen: $e');
+        }
+        return null;
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error general en compresión: $e');
+      }
+      return null;
     }
   }
 
@@ -185,6 +260,9 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   final TextEditingController _cameraSearchController = TextEditingController();
   bool _isLoadingCameras = false;
   List<Map<String, dynamic>> _filteredCameras = [];
+  bool _isOutOfZone = false;
+  final TextEditingController _outOfZoneDescriptionController =
+      TextEditingController();
 
   // Images
   final List<UniversalFile> _selectedImages = [];
@@ -232,6 +310,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     _stIpController.addListener(_onFormChanged);
     _ccqController.addListener(_onFormChanged);
     _cameraSearchController.addListener(_filterCameras);
+    _outOfZoneDescriptionController.addListener(_onFormChanged);
   }
 
   @override
@@ -248,6 +327,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     _stIpController.dispose();
     _ccqController.dispose();
     _cameraSearchController.dispose();
+    _outOfZoneDescriptionController.dispose();
     super.dispose();
   }
 
@@ -311,24 +391,21 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         final materialId = teamMaterial['materialId']?.toString();
         final quantity = teamMaterial['quantity']?.toString() ?? '0';
         var materialName = teamMaterial['materialName']?.toString();
+        final isReconditioned = teamMaterial['isReconditioned'] == true;
 
-        // El materialName debería venir del inventario del equipo según tu estructura
-        if (materialId != null) {
-          // Si ya tiene nombre válido, usarlo
-          if (materialName != null && materialName.isNotEmpty) {
-            materialsWithNames.add({
-              'materialId': materialId,
-              'materialName': materialName,
-              'quantity': quantity,
-            });
-          } else {
-            // Si no hay materialName, buscar en inventarios principales
-            await _loadMaterialNameFromInventories(
-              materialId,
-              quantity,
-              materialsWithNames,
-            );
-          }
+        if (materialId != null &&
+            materialName != null &&
+            materialName.isNotEmpty) {
+          // Agregar "(Recuperado)" al nombre si es un material reacondicionado
+          final displayName =
+              isReconditioned ? '$materialName (Recuperado)' : materialName;
+
+          materialsWithNames.add({
+            'materialId': materialId,
+            'materialName': displayName,
+            'quantity': quantity,
+            'isRecovered': isReconditioned,
+          });
         }
       }
 
@@ -350,64 +427,6 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     }
   }
 
-  Future<void> _loadMaterialNameFromInventories(
-    String materialId,
-    String quantity,
-    List<Map<String, dynamic>> materialsWithNames,
-  ) async {
-    try {
-      // Cargar inventario principal para buscar el nombre
-      final mainInventoryResponse = await TechHubApiClient.getInventory();
-      final recoveredInventoryResponse =
-          await TechHubApiClient.getRecoveredInventory();
-
-      final mainInventory =
-          mainInventoryResponse.isSuccess
-              ? (mainInventoryResponse.data ?? [])
-              : <Map<String, dynamic>>[];
-      final recoveredInventory =
-          recoveredInventoryResponse.isSuccess
-              ? (recoveredInventoryResponse.data ?? [])
-              : <Map<String, dynamic>>[];
-
-      String? materialName;
-
-      // Buscar en inventario principal
-      for (var mainMaterial in mainInventory) {
-        if (mainMaterial['_id']?.toString() == materialId) {
-          materialName = mainMaterial['name']?.toString();
-          break;
-        }
-      }
-
-      // Si no se encontró, buscar en inventario recuperado
-      if (materialName == null || materialName.isEmpty) {
-        for (var recoveredMaterial in recoveredInventory) {
-          if (recoveredMaterial['_id']?.toString() == materialId) {
-            materialName =
-                '${recoveredMaterial['name']?.toString()} (Recuperado)';
-            break;
-          }
-        }
-      }
-
-      if (materialName != null && materialName.isNotEmpty) {
-        materialsWithNames.add({
-          'materialId': materialId,
-          'materialName': materialName,
-          'quantity': quantity,
-        });
-      }
-    } catch (e) {
-      // Si hay error buscando el nombre, agregar con ID como fallback
-      materialsWithNames.add({
-        'materialId': materialId,
-        'materialName': 'Material ID: $materialId',
-        'quantity': quantity,
-      });
-    }
-  }
-
   Future<void> _loadCameras() async {
     if (!mounted) return;
     setState(() {
@@ -419,16 +438,18 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
 
       if (response.isSuccess && response.data != null) {
         final allCameras = response.data!;
-        
+
         // Obtener el nombre del team actual para filtrar cámaras
         final currentTeamName = widget.authManager.teamName;
-        
+
         // Filtrar cámaras por el campo liable que coincida con el team actual
-        final teamCameras = allCameras.where((camera) {
-          final cameraLiable = camera['liable']?.toString().toLowerCase().trim();
-          final teamNameLower = currentTeamName?.toLowerCase().trim();
-          return cameraLiable == teamNameLower;
-        }).toList();
+        final teamCameras =
+            allCameras.where((camera) {
+              final cameraLiable =
+                  camera['liable']?.toString().toLowerCase().trim();
+              final teamNameLower = currentTeamName?.toLowerCase().trim();
+              return cameraLiable == teamNameLower;
+            }).toList();
 
         if (mounted) {
           setState(() {
@@ -450,21 +471,80 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     }
   }
 
+  // Traducir estados de cámara del inglés al español
+  String _translateCameraStatus(String? status) {
+    if (status == null) return 'Sin estado';
+
+    switch (status.toLowerCase()) {
+      case 'online':
+        return 'En línea';
+      case 'warning':
+        return 'Advertencia';
+      case 'offline':
+        return 'Fuera de línea';
+      case 'maintenance':
+        return 'Mantenimiento';
+      case 'removed':
+        return 'Retirada';
+      default:
+        return status; // Retorna el estado original si no coincide
+    }
+  }
+
+  // Traducir tipos de cámara del inglés al español
+  String _translateCameraType(String? type) {
+    if (type == null) return 'Sin tipo';
+
+    switch (type.toLowerCase()) {
+      case 'fixed':
+        return 'Fija';
+      case 'dome':
+        return 'Domo';
+      case 'lpr':
+        return 'LPR';
+      case 'button':
+        return 'Botón';
+      default:
+        return type; // Retorna el tipo original si no coincide
+    }
+  }
+
+  // Obtener color del estado de cámara
+  Color _getCameraStatusColor(String? status) {
+    if (status == null) return Colors.grey;
+
+    switch (status.toLowerCase()) {
+      case 'online':
+        return Colors.green;
+      case 'warning':
+        return Colors.orange;
+      case 'offline':
+        return Colors.red;
+      case 'maintenance':
+        return Colors.blue;
+      case 'removed':
+        return Colors.grey;
+      default:
+        return Colors.grey;
+    }
+  }
+
   void _filterCameras() {
     final query = _cameraSearchController.text.toLowerCase();
     setState(() {
       if (query.isEmpty) {
         _filteredCameras = _availableCameras;
       } else {
-        _filteredCameras = _availableCameras.where((camera) {
-          final cameraName = camera['name']?.toString().toLowerCase() ?? '';
-          final cameraZone = camera['zone']?.toString().toLowerCase() ?? '';
-          final cameraType = camera['type']?.toString().toLowerCase() ?? '';
-          
-          return cameraName.contains(query) ||
-                 cameraZone.contains(query) ||
-                 cameraType.contains(query);
-        }).toList();
+        _filteredCameras =
+            _availableCameras.where((camera) {
+              final cameraName = camera['name']?.toString().toLowerCase() ?? '';
+              final cameraZone = camera['zone']?.toString().toLowerCase() ?? '';
+              final cameraType = camera['type']?.toString().toLowerCase() ?? '';
+
+              return cameraName.contains(query) ||
+                  cameraZone.contains(query) ||
+                  cameraType.contains(query);
+            }).toList();
       }
     });
   }
@@ -888,7 +968,10 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         location:
             '${_currentLocation!.latitude},${_currentLocation!.longitude}',
         connectivity: _connectivity,
-        cameraName: _selectedCameraName,
+        cameraName:
+            _isOutOfZone
+                ? 'Fuera de zona: ${_outOfZoneDescriptionController.text}'
+                : _selectedCameraName,
         db:
             _connectivity == 'Fibra óptica' && _dbController.text.isNotEmpty
                 ? _dbController.text
@@ -999,7 +1082,19 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
           _descriptionController.text = report.toDo ?? '';
           _typeOfWork = report.typeOfWork ?? _typeOfWorkOptions.first;
           _connectivity = report.connectivity ?? _connectivityOptions.first;
-          _selectedCameraName = report.cameraName;
+          // Manejar cámara o fuera de zona
+          if (report.cameraName != null &&
+              report.cameraName!.startsWith('Fuera de zona: ')) {
+            _isOutOfZone = true;
+            _selectedCameraName = null;
+            _outOfZoneDescriptionController.text = report.cameraName!.substring(
+              15,
+            ); // Remover "Fuera de zona: "
+          } else {
+            _isOutOfZone = false;
+            _selectedCameraName = report.cameraName;
+            _outOfZoneDescriptionController.clear();
+          }
 
           // Populate connectivity-specific fields
           if (report.connectivity == 'Fibra óptica') {
@@ -1148,7 +1243,10 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                 ? '${_currentLocation!.latitude},${_currentLocation!.longitude}'
                 : null,
         connectivity: _connectivity,
-        cameraName: _selectedCameraName,
+        cameraName:
+            _isOutOfZone
+                ? 'Fuera de zona: ${_outOfZoneDescriptionController.text}'
+                : _selectedCameraName,
         db:
             _connectivity == 'Fibra óptica' && _dbController.text.isNotEmpty
                 ? _dbController.text
@@ -1192,6 +1290,9 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   }
 
   void _onFormChanged() {
+    // Actualizar estado para reflejar cambios en validación
+    setState(() {});
+
     // Debounced save - Guardar después de 2 segundos de inactividad
     if (_isDraftCreated) {
       _autoSaveTimer?.cancel();
@@ -1199,6 +1300,56 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         _saveDraft();
       });
     }
+  }
+
+  // Validar si todos los campos requeridos están completados para finalizar el remito
+  bool get _isFormValidForFinish {
+    // Campo obligatorio: descripción
+    if (_descriptionController.text.trim().isEmpty) return false;
+
+    // Campo obligatorio: ubicación
+    if (_currentLocation == null) return false;
+
+    // Campo obligatorio: cámara asociada O fuera de zona con descripción
+    if (!_isOutOfZone) {
+      // Si no está fuera de zona, debe tener cámara seleccionada
+      if (_selectedCameraName == null || _selectedCameraName!.isEmpty) {
+        return false;
+      }
+    } else {
+      // Si está fuera de zona, debe tener descripción
+      if (_outOfZoneDescriptionController.text.trim().isEmpty) {
+        return false;
+      }
+    }
+
+    // Validaciones específicas por tipo de conectividad
+    if (_connectivity == 'Fibra óptica') {
+      // Para fibra óptica, todos los campos son obligatorios
+      if (_dbController.text.trim().isEmpty ||
+          _buffersController.text.trim().isEmpty ||
+          _bufferColorController.text.trim().isEmpty ||
+          _hairColorController.text.trim().isEmpty) {
+        return false;
+      }
+    } else if (_connectivity == 'Enlace') {
+      // Para enlace, AP, ST y CCQ son obligatorios
+      if (_apNameController.text.trim().isEmpty ||
+          _apIpController.text.trim().isEmpty ||
+          _stNameController.text.trim().isEmpty ||
+          _stIpController.text.trim().isEmpty ||
+          _ccqController.text.trim().isEmpty) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  // Validar si se puede crear un borrador (validación mínima)
+  bool get _canCreateDraft {
+    // Para crear un borrador, solo verificamos que no esté enviando
+    return !_isSubmitting;
   }
 
   void _resetForm() {
@@ -1216,6 +1367,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     _stIpController.clear();
     _ccqController.clear();
     _cameraSearchController.clear();
+    _outOfZoneDescriptionController.clear();
 
     // Resetear variables del formulario
     setState(() {
@@ -1225,6 +1377,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       _materialQuantities.clear();
       _selectedImages.clear();
       _selectedCameraName = null;
+      _isOutOfZone = false;
       _filteredCameras = _availableCameras;
       _isSubmitting = false;
       _currentReportId = null;
@@ -1240,36 +1393,49 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     required String label,
     TextInputType? keyboardType,
     int maxLines = 1,
+    bool isRequired = false,
   }) {
+    final isEmpty = controller.text.trim().isEmpty;
+    final showError = isRequired && isEmpty;
+
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
       maxLines: maxLines,
       decoration: InputDecoration(
-        labelText: label,
+        labelText: isRequired ? '$label *' : label,
         labelStyle: TextStyle(
-          color: Colors.grey[600],
+          color: showError ? Colors.red[600] : Colors.grey[600],
           fontSize: 14,
           fontWeight: FontWeight.w500,
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[300]!),
+          borderSide: BorderSide(
+            color: showError ? Colors.red[300]! : Colors.grey[300]!,
+          ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[300]!),
+          borderSide: BorderSide(
+            color: showError ? Colors.red[300]! : Colors.grey[300]!,
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFF1E293B), width: 2),
+          borderSide: BorderSide(
+            color: showError ? Colors.red[500]! : const Color(0xFF1E293B),
+            width: 2,
+          ),
         ),
         filled: true,
-        fillColor: Colors.grey[50],
+        fillColor: showError ? Colors.red[50] : Colors.grey[50],
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 16,
         ),
+        helperText: showError ? 'Este campo es obligatorio' : null,
+        helperStyle: TextStyle(color: Colors.red[600], fontSize: 12),
       ),
       style: TextStyle(
         fontSize: 14,
@@ -1833,6 +1999,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   child: _buildInputField(
                     controller: _dbController,
                     label: 'DB',
+                    isRequired: true,
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -1840,6 +2007,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   child: _buildInputField(
                     controller: _buffersController,
                     label: 'Buffers',
+                    isRequired: true,
                   ),
                 ),
               ],
@@ -1851,6 +2019,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   child: _buildInputField(
                     controller: _bufferColorController,
                     label: 'Color del Buffer',
+                    isRequired: true,
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -1858,6 +2027,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   child: _buildInputField(
                     controller: _hairColorController,
                     label: 'Color del Pelo',
+                    isRequired: true,
                   ),
                 ),
               ],
@@ -1869,6 +2039,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   child: _buildInputField(
                     controller: _apNameController,
                     label: 'AP (Nombre)',
+                    isRequired: true,
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -1876,6 +2047,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   child: _buildInputField(
                     controller: _apIpController,
                     label: 'AP (IP)',
+                    isRequired: true,
                   ),
                 ),
               ],
@@ -1887,6 +2059,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   child: _buildInputField(
                     controller: _stNameController,
                     label: 'ST (Nombre)',
+                    isRequired: true,
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -1894,6 +2067,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   child: _buildInputField(
                     controller: _stIpController,
                     label: 'ST (IP)',
+                    isRequired: true,
                   ),
                 ),
               ],
@@ -1907,6 +2081,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                     controller: _ccqController,
                     label: 'CCQ (%)',
                     keyboardType: TextInputType.number,
+                    isRequired: true,
                   ),
                 ),
                 const Expanded(flex: 1, child: SizedBox()),
@@ -1951,89 +2126,91 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
               ),
               const SizedBox(width: 12),
               Text(
-                'Cámara Asociada',
+                'Cámara Asociada *',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
-                  color: Colors.grey[800],
+                  color:
+                      _selectedCameraName == null
+                          ? Colors.red[600]
+                          : Colors.grey[800],
                   letterSpacing: 0.15,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 20),
-          
-          // Buscador de cámaras
-          TextFormField(
-            controller: _cameraSearchController,
-            decoration: InputDecoration(
-              labelText: 'Buscar cámara...',
-              hintText: 'Escriba el nombre, zona o tipo de cámara',
-              labelStyle: TextStyle(
-                color: Colors.grey[600],
+
+          // Buscador de cámaras (solo si no está fuera de zona)
+          if (!_isOutOfZone)
+            TextFormField(
+              controller: _cameraSearchController,
+              decoration: InputDecoration(
+                labelText: 'Buscar cámara...',
+                hintText: 'Escriba el nombre, zona o tipo de cámara',
+                labelStyle: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+                hintStyle: TextStyle(color: Colors.grey[400], fontSize: 13),
+                prefixIcon: Container(
+                  margin: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    LucideIcons.search,
+                    color: Colors.blue.shade600,
+                    size: 18,
+                  ),
+                ),
+                suffixIcon:
+                    _selectedCameraName != null
+                        ? Container(
+                          margin: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            LucideIcons.check,
+                            color: Colors.green.shade600,
+                            size: 18,
+                          ),
+                        )
+                        : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(
+                    color: Color(0xFF1E293B),
+                    width: 2,
+                  ),
+                ),
+                filled: true,
+                fillColor: Colors.grey[50],
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 16,
+                ),
+              ),
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-              ),
-              hintStyle: TextStyle(
-                color: Colors.grey[400],
-                fontSize: 13,
-              ),
-              prefixIcon: Container(
-                margin: const EdgeInsets.all(12),
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  LucideIcons.search,
-                  color: Colors.blue.shade600,
-                  size: 18,
-                ),
-              ),
-              suffixIcon: _selectedCameraName != null
-                  ? Container(
-                      margin: const EdgeInsets.all(12),
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(
-                        LucideIcons.check,
-                        color: Colors.green.shade600,
-                        size: 18,
-                      ),
-                    )
-                  : null,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey[300]!),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey[300]!),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(
-                  color: Color(0xFF1E293B),
-                  width: 2,
-                ),
-              ),
-              filled: true,
-              fillColor: Colors.grey[50],
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 16,
+                color: Colors.grey[800],
               ),
             ),
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: Colors.grey[800],
-            ),
-          ),
 
           const SizedBox(height: 16),
 
@@ -2117,9 +2294,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
             if (_isLoadingCameras)
               Container(
                 padding: const EdgeInsets.all(20),
-                child: const Center(
-                  child: CircularProgressIndicator(),
-                ),
+                child: const Center(child: CircularProgressIndicator()),
               )
             else if (_filteredCameras.isEmpty)
               Container(
@@ -2164,10 +2339,17 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   itemCount: _filteredCameras.length,
                   itemBuilder: (context, index) {
                     final camera = _filteredCameras[index];
-                    final cameraName = camera['name']?.toString() ?? 'Cámara sin nombre';
+                    final cameraName =
+                        camera['name']?.toString() ?? 'Cámara sin nombre';
                     final cameraZone = camera['zone']?.toString() ?? 'Sin zona';
-                    final cameraType = camera['type']?.toString() ?? 'Sin tipo';
-                    
+                    final cameraType = camera['type']?.toString();
+                    final translatedType = _translateCameraType(cameraType);
+                    final cameraStatus = camera['status']?.toString();
+                    final translatedStatus = _translateCameraStatus(
+                      cameraStatus,
+                    );
+                    final statusColor = _getCameraStatusColor(cameraStatus);
+
                     return ListTile(
                       leading: Container(
                         padding: const EdgeInsets.all(8),
@@ -2188,12 +2370,39 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                           fontSize: 14,
                         ),
                       ),
-                      subtitle: Text(
-                        '$cameraZone • $cameraType',
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 12,
-                        ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '$cameraZone • $translatedType',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: statusColor,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                translatedStatus,
+                                style: TextStyle(
+                                  color: statusColor,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                       onTap: () {
                         setState(() {
@@ -2206,6 +2415,181 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                 ),
               ),
           ],
+
+          if (!_isOutOfZone) const SizedBox(height: 20),
+
+          const SizedBox(height: 20),
+
+          // Checkbox para "Fuera de zona"
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: _isOutOfZone ? Colors.blue[50] : Colors.grey[50],
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _isOutOfZone ? Colors.blue[300]! : Colors.grey[300]!,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Transform.scale(
+                      scale: 1.2,
+                      child: Checkbox(
+                        value: _isOutOfZone,
+                        onChanged: (value) {
+                          setState(() {
+                            _isOutOfZone = value ?? false;
+                            if (!_isOutOfZone) {
+                              _outOfZoneDescriptionController.clear();
+                            } else {
+                              // Si marca "fuera de zona", limpiar cámara seleccionada
+                              _selectedCameraName = null;
+                              _cameraSearchController.clear();
+                              _filteredCameras = _availableCameras;
+                            }
+                          });
+                          _onFormChanged();
+                        },
+                        activeColor: Colors.blue[600],
+                        checkColor: Colors.white,
+                        side: BorderSide(color: Colors.grey[400]!),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Trabajo fuera de zona (no hay cámara asociada)',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color:
+                              _isOutOfZone
+                                  ? Colors.blue[700]
+                                  : Colors.grey[700],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Input de descripción cuando está fuera de zona
+                if (_isOutOfZone) ...[
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _outOfZoneDescriptionController,
+                    decoration: InputDecoration(
+                      labelText: 'Descripción de la zona *',
+                      hintText: 'Ej: Sector industrial, zona rural, etc.',
+                      labelStyle: TextStyle(
+                        color: Colors.blue[600],
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      hintStyle: TextStyle(
+                        color: Colors.grey[400],
+                        fontSize: 13,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: Colors.blue[300]!),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: Colors.blue[300]!),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(
+                          color: Colors.blue[600]!,
+                          width: 2,
+                        ),
+                      ),
+                      filled: true,
+                      fillColor: Colors.blue[25],
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 14,
+                      ),
+                    ),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey[800],
+                    ),
+                    maxLines: 2,
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // Mensaje de validación si no hay cámara seleccionada y no está fuera de zona
+          if (_selectedCameraName == null && !_isOutOfZone)
+            Container(
+              margin: const EdgeInsets.only(top: 16),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.red[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red[200]!),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    LucideIcons.alertTriangle,
+                    color: Colors.red[600],
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Debe seleccionar una cámara asociada al trabajo o marcar "Fuera de zona"',
+                      style: TextStyle(
+                        color: Colors.red[700],
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          // Mensaje de validación si está fuera de zona pero no hay descripción
+          if (_isOutOfZone &&
+              _outOfZoneDescriptionController.text.trim().isEmpty)
+            Container(
+              margin: const EdgeInsets.only(top: 16),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.red[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red[200]!),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    LucideIcons.alertTriangle,
+                    color: Colors.red[600],
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Debe especificar la descripción de la zona',
+                      style: TextStyle(
+                        color: Colors.red[700],
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -2255,56 +2639,11 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
             ],
           ),
           const SizedBox(height: 20),
-          TextFormField(
+          _buildInputField(
             controller: _descriptionController,
-            decoration: InputDecoration(
-              labelText: 'Descripción detallada del trabajo realizado',
-              labelStyle: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey[300]!),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey[300]!),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(
-                  color: Color(0xFF1E293B),
-                  width: 2,
-                ),
-              ),
-              errorBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Colors.red, width: 2),
-              ),
-              focusedErrorBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Colors.red, width: 2),
-              ),
-              alignLabelWithHint: true,
-              filled: true,
-              fillColor: Colors.grey[50],
-              contentPadding: const EdgeInsets.all(20),
-            ),
+            label: 'Descripción detallada del trabajo realizado',
             maxLines: 5,
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-              color: Colors.grey[800],
-              height: 1.4,
-            ),
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return 'Por favor ingrese una descripción del trabajo realizado';
-              }
-              return null;
-            },
+            isRequired: true,
           ),
         ],
       ),
@@ -2459,24 +2798,35 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                       final selectedQuantity =
                           _materialQuantities[materialId] ?? 0;
 
+                      final isRecovered = material['isRecovered'] == true;
+
                       return Container(
                         margin: const EdgeInsets.only(bottom: 12),
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                           color:
                               selectedQuantity > 0
-                                  ? const Color(
-                                    0xFF1E293B,
-                                  ).withValues(alpha: 0.05)
-                                  : Colors.grey[50],
+                                  ? (isRecovered
+                                      ? Colors.green.withValues(alpha: 0.05)
+                                      : const Color(
+                                        0xFF1E293B,
+                                      ).withValues(alpha: 0.05))
+                                  : (isRecovered
+                                      ? Colors.green[25]
+                                      : Colors.grey[50]),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
                             color:
                                 selectedQuantity > 0
-                                    ? const Color(
-                                      0xFF1E293B,
-                                    ).withValues(alpha: 0.3)
-                                    : Colors.grey[200]!,
+                                    ? (isRecovered
+                                        ? Colors.green.withValues(alpha: 0.4)
+                                        : const Color(
+                                          0xFF1E293B,
+                                        ).withValues(alpha: 0.3))
+                                    : (isRecovered
+                                        ? Colors.green[200]!
+                                        : Colors.grey[200]!),
+                            width: isRecovered ? 2 : 1,
                           ),
                         ),
                         child: Column(
@@ -2488,15 +2838,44 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        material['materialName'] ?? 'Material',
-                                        style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.grey[800],
-                                        ),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
+                                      Row(
+                                        children: [
+                                          // Icono para materiales recuperados
+                                          if (isRecovered) ...[
+                                            Container(
+                                              margin: const EdgeInsets.only(
+                                                right: 8,
+                                              ),
+                                              padding: const EdgeInsets.all(4),
+                                              decoration: BoxDecoration(
+                                                color: Colors.green[100],
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                              ),
+                                              child: Icon(
+                                                LucideIcons.recycle,
+                                                size: 14,
+                                                color: Colors.green[700],
+                                              ),
+                                            ),
+                                          ],
+                                          Expanded(
+                                            child: Text(
+                                              material['materialName'] ??
+                                                  'Material',
+                                              style: TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w600,
+                                                color:
+                                                    isRecovered
+                                                        ? Colors.green[800]
+                                                        : Colors.grey[800],
+                                              ),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
@@ -2956,7 +3335,9 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   }
 
   Widget _buildSubmitButton() {
-    final isEnabled = !_isSubmitting && _currentLocation != null;
+    final isEnabled =
+        !_isSubmitting &&
+        (_isDraftCreated ? _isFormValidForFinish : _canCreateDraft);
     final buttonText = _isDraftCreated ? 'Finalizar Remito' : 'Crear Remito';
     final buttonIcon =
         _isDraftCreated ? LucideIcons.checkCircle : LucideIcons.plus;

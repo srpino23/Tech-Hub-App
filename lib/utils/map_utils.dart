@@ -6,7 +6,8 @@ class MapUtils {
   // Configuración optimizada para evitar problemas de cache
   static TileLayer createOptimizedTileLayer() {
     return TileLayer(
-      urlTemplate: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+      urlTemplate:
+          'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
       subdomains: const ['a', 'b', 'c', 'd'],
       userAgentPackageName: 'com.example.techhub_mobile',
       maxZoom: 18,

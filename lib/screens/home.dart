@@ -7,6 +7,7 @@ import 'map_screen.dart';
 import 'works_screen.dart';
 import 'create_report_screen.dart';
 import 'dashboard_screen.dart';
+import 'inventory_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final AuthManager authManager;
@@ -28,7 +29,7 @@ class _HomeScreenState extends State<HomeScreen> {
         case 1:
           return MapScreen(authManager: widget.authManager);
         case 2:
-          return const _PlaceholderScreen(title: 'Inventario');
+          return InventoryScreen(authManager: widget.authManager);
         case 3:
           return WorksScreen(authManager: widget.authManager);
         case 4:
@@ -302,45 +303,45 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _PlaceholderScreen extends StatelessWidget {
-  final String title;
+// class _PlaceholderScreen extends StatelessWidget {
+//   final String title;
 
-  const _PlaceholderScreen({required this.title});
+//   const _PlaceholderScreen({required this.title});
 
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.orange.shade100,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Icon(
-              LucideIcons.construction,
-              size: 64,
-              color: Colors.orange.shade600,
-            ),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey.shade800,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Pantalla en desarrollo',
-            style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
-          ),
-        ],
-      ),
-    );
-  }
-}
+//   @override
+//   Widget build(BuildContext context) {
+//     return Center(
+//       child: Column(
+//         mainAxisAlignment: MainAxisAlignment.center,
+//         children: [
+//           Container(
+//             padding: const EdgeInsets.all(24),
+//             decoration: BoxDecoration(
+//               color: Colors.orange.shade100,
+//               borderRadius: BorderRadius.circular(16),
+//             ),
+//             child: Icon(
+//               LucideIcons.construction,
+//               size: 64,
+//               color: Colors.orange.shade600,
+//             ),
+//           ),
+//           const SizedBox(height: 24),
+//           Text(
+//             title,
+//             style: TextStyle(
+//               fontSize: 24,
+//               fontWeight: FontWeight.bold,
+//               color: Colors.grey.shade800,
+//             ),
+//           ),
+//           const SizedBox(height: 8),
+//           Text(
+//             'Pantalla en desarrollo',
+//             style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+//           ),
+//         ],
+//       ),
+//     );
+//   }
+// }
