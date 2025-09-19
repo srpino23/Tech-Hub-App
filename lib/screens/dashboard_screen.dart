@@ -64,22 +64,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
             _selectedLiableHistory = data;
             _isLoadingLiableHistory = false;
           });
-          // Debug: imprimir información sobre los datos cargados
-          print('Datos cargados para equipo $liable: ${data.length} entradas');
-          if (data.isNotEmpty) {
-            print('Primera entrada: ${data.first}');
-            print('Campos disponibles: ${data.first.keys.toList()}');
-            print('generalOperability de primera entrada: ${data.first['generalOperability']}');
-          }
         } catch (e) {
-          print('Error convirtiendo datos del equipo $liable: $e');
           setState(() {
             _selectedLiableHistory = [];
             _isLoadingLiableHistory = false;
           });
         }
       } else {
-        print('Respuesta fallida para equipo $liable: ${response.error}');
         // Fallback: filtrar datos generales por equipo
         if (mounted) {
           final filteredData = _operationalHistory.where((entry) {
@@ -102,12 +93,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             _selectedLiableHistory = filteredData;
             _isLoadingLiableHistory = false;
           });
-
-          print('Datos filtrados para equipo $liable: ${filteredData.length} entradas');
         }
       }
     } catch (e) {
-      print('Excepción cargando datos del equipo $liable: $e');
       // Fallback: filtrar datos generales por equipo
       if (mounted) {
         final filteredData = _operationalHistory.where((entry) {
@@ -130,8 +118,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _selectedLiableHistory = filteredData;
           _isLoadingLiableHistory = false;
         });
-
-        print('Datos filtrados (fallback) para equipo $liable: ${filteredData.length} entradas');
       }
     }
   }
@@ -749,7 +735,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         )),
                       ],
                       onChanged: (value) {
-                        print('Equipo seleccionado: $value');
                         setState(() {
                           _selectedLiable = value;
                           if (value == null) {
@@ -757,7 +742,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           }
                         });
                         if (value != null) {
-                          print('Cargando datos para equipo: $value');
                           _loadLiableHistory(value);
                         }
                       },
@@ -972,30 +956,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final spots = <FlSpot>[];
     final filteredHistory = _getFilteredOperationalHistory();
 
-    print('Construyendo spots para ${_selectedLiable ?? 'todos los equipos'}');
-    print('Datos filtrados: ${filteredHistory.length} entradas');
-
     if (filteredHistory.isEmpty) return spots;
 
     for (int i = 0; i < filteredHistory.length; i++) {
       final entry = filteredHistory[i];
       final operability = (entry['generalOperability'] ?? 0).toDouble();
 
-      // Debug adicional
-      if (i == 0) {
-        print('Procesando entrada $i: generalOperability = $operability');
-        print('Tipo de generalOperability: ${entry['generalOperability'].runtimeType}');
-        print('Entry completa: $entry');
-      }
-
       spots.add(FlSpot(i.toDouble(), operability));
-
-      if (i < 3) { // Solo imprimir las primeras 3 entradas para no saturar
-        print('Entrada $i: operability = $operability, full entry: $entry');
-      }
     }
-
-    print('Total spots generados: ${spots.length}');
     return spots;
   }
 
@@ -1003,11 +971,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final sourceHistory = _selectedLiable != null && _selectedLiableHistory.isNotEmpty
         ? _selectedLiableHistory
         : _operationalHistory;
-
-    print('Usando fuente de datos: ${_selectedLiable != null && _selectedLiableHistory.isNotEmpty ? 'equipo específico' : 'datos generales'}');
-    print('Equipo seleccionado: $_selectedLiable');
-    print('Datos del equipo: ${_selectedLiableHistory.length} entradas');
-    print('Datos generales: ${_operationalHistory.length} entradas');
 
     if (_startDate == null || _endDate == null) return sourceHistory;
 
