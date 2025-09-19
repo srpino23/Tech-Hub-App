@@ -11,6 +11,7 @@ import 'package:fl_chart/fl_chart.dart';
 import '../auth_manager.dart';
 import '../services/analyzer_api_client.dart';
 import '../services/techhub_api_client.dart';
+import '../widgets/websocket_video_player.dart';
 import 'camera_crud_popup.dart';
 
 class MapScreen extends StatefulWidget {
@@ -1397,6 +1398,11 @@ class _MapScreenState extends State<MapScreen> {
                         if (camera['latitude'] != null &&
                             camera['longitude'] != null)
                           _buildMapLocationSection(camera, isWideScreen),
+
+                        const SizedBox(height: 24),
+
+                        // Sección de acciones
+                        _buildCameraActionsSection(camera),
                       ],
                     ),
                   ),
@@ -1786,6 +1792,38 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
+  Widget _buildCameraActionsSection(Map<String, dynamic> camera) {
+    return _buildMapInfoSection(
+      'Acciones de la Cámara',
+      LucideIcons.settings,
+      Colors.indigo,
+      [
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _showVideoStream(camera);
+                },
+                icon: const Icon(LucideIcons.play),
+                label: const Text('Ver Transmisión'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.indigo.shade600,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _buildControlButton({
     required IconData icon,
     required String label,
@@ -1954,6 +1992,19 @@ class _MapScreenState extends State<MapScreen> {
 
   void _openCameraCrud() {
     showDialog(context: context, builder: (context) => const CameraCrudPopup());
+  }
+
+  void _showVideoStream(Map<String, dynamic> camera) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (context) => WebSocketVideoPlayer(
+            camera: camera,
+            width: double.infinity,
+            height: 300,
+          ),
+    );
   }
 
   @override
