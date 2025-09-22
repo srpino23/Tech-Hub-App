@@ -363,6 +363,74 @@ class AnalyzerApiClient {
     }
   }
 
+  // =======================
+  // Endpoints de Status Reports
+  // =======================
+
+  static Future<ApiResponse<Map<String, dynamic>>> getLastStatusReport() async {
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/status/last'), headers: _jsonHeaders)
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(
+        response,
+        (data) => data as Map<String, dynamic>,
+      );
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<List<Map<String, dynamic>>>> getStatusReportsByType({
+    required String type,
+    int limit = 10,
+  }) async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/status/type/$type?limit=$limit'),
+            headers: _jsonHeaders,
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<List<Map<String, dynamic>>>(
+        response,
+        (data) => List<Map<String, dynamic>>.from(data),
+      );
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> getAllStatusReports({
+    int page = 1,
+    int limit = 20,
+    String? type,
+    String? severity,
+  }) async {
+    try {
+      final queryParams = {
+        'page': page.toString(),
+        'limit': limit.toString(),
+        if (type != null) 'type': type,
+        if (severity != null) 'severity': severity,
+      };
+      final uri = Uri.parse('$baseUrl/status/all').replace(queryParameters: queryParams);
+
+      final response = await http
+          .get(uri, headers: _jsonHeaders)
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(
+        response,
+        (data) => data as Map<String, dynamic>,
+      );
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
   static ApiResponse<T> _handleResponse<T>(
     http.Response response,
     T Function(dynamic) converter,
