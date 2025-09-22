@@ -2902,6 +2902,7 @@ class _WorksScreenState extends State<WorksScreen> {
     );
   }
 
+  // ignore: unused_element
   Future<void> _deleteReport(Map<String, dynamic> report) async {
     final reportId = report['_id']?.toString();
     if (reportId == null) {
