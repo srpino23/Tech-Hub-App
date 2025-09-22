@@ -113,10 +113,7 @@ class TechHubApiClient {
     userId, // Nuevo parámetro opcional para filtrar por usuario específico
   }) async {
     try {
-      String url = '$baseUrl/report/getReportsByTeam?page=$page&limit=$limit';
-      if (userId != null) {
-        url += '&userId=$userId';
-      }
+      String url = '$baseUrl/report/getReportsByTeam?page=$page&limit=$limit${userId != null ? '&userId=$userId' : ''}';
 
       final response = await http
           .post(
@@ -211,10 +208,7 @@ class TechHubApiClient {
     String? status,
   }) async {
     try {
-      String url = '$baseUrl/recoveredInventory/getRecoveredInventory';
-      if (status != null) {
-        url += '?status=$status';
-      }
+      String url = '$baseUrl/recoveredInventory/getRecoveredInventory${status != null ? '?status=$status' : ''}';
 
       final response = await http
           .get(Uri.parse(url), headers: _jsonHeaders)
@@ -1065,5 +1059,99 @@ class TechHubApiClient {
     }
 
     throw Exception('Max retries exceeded');
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> createTask({
+    required String team,
+    required String title,
+    required String location,
+    required String toDo,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/task/createTask'),
+            headers: _jsonHeaders,
+            body: json.encode({
+              'team': team,
+              'title': title,
+              'location': location,
+              'toDo': toDo,
+            }),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> editTask({
+    required String taskId,
+    required String team,
+    required String title,
+    required String location,
+    required String toDo,
+    String? status,
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        'taskId': taskId,
+        'team': team,
+        'title': title,
+        'location': location,
+        'toDo': toDo,
+      };
+      if (status != null) body['status'] = status;
+
+      final response = await http
+          .put(
+            Uri.parse('$baseUrl/task/editTask'),
+            headers: _jsonHeaders,
+            body: json.encode(body),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> deleteTask({
+    required String taskId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/task/deleteTask'),
+            headers: _jsonHeaders,
+            body: json.encode({'taskId': taskId}),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> markTaskCompleted({
+    required String taskId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/task/markCompleted'),
+            headers: _jsonHeaders,
+            body: json.encode({'taskId': taskId}),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
   }
 }

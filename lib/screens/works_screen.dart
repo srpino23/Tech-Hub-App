@@ -7,6 +7,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../auth_manager.dart';
 import '../services/techhub_api_client.dart';
+import '../services/analyzer_api_client.dart';
 import '../services/api_response.dart';
 import '../utils/pdf_download_helper.dart';
 import '../utils/data_helpers.dart';
@@ -60,10 +61,25 @@ class _WorksScreenState extends State<WorksScreen> {
   // ET team validation
   bool _isETTeamUser = false;
 
+  // New task form
+  final TextEditingController _taskNameController = TextEditingController();
+  final TextEditingController _taskDescriptionController = TextEditingController();
+  final TextEditingController _taskLocationController = TextEditingController();
+  String? _selectedTeamId;
+  List<Map<String, dynamic>> _teams = [];
+  bool _isTeamsLoaded = false;
+  bool _isCreatingTask = false;
+
   @override
   void initState() {
     super.initState();
     _mapController = MapController();
+
+    // Asegurar que el estado inicial sea válido para la sección inicial
+    if (_selectedSection == 'tareas' && _selectedStatus == 'in_progress') {
+      _selectedStatus = 'pending';
+    }
+
     _checkETTeamStatus();
     _loadData();
     _searchController.addListener(_onSearchChanged);
@@ -72,6 +88,9 @@ class _WorksScreenState extends State<WorksScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _taskNameController.dispose();
+    _taskDescriptionController.dispose();
+    _taskLocationController.dispose();
     MapUtils.safeDisposeMapController(_mapController);
     super.dispose();
   }
@@ -102,23 +121,39 @@ class _WorksScreenState extends State<WorksScreen> {
   }
 
   Future<void> _loadData({bool refresh = false}) async {
+    // Mantener respaldo de los datos actuales si es refresh
+    final List<Map<String, dynamic>> tasksBackup = refresh ? List.from(_tasks) : [];
+    final List<Map<String, dynamic>> reportsBackup = refresh ? List.from(_reports) : [];
+
     if (refresh) {
       _tasks.clear();
       _reports.clear();
     }
 
-    // Cargar usuarios e inventarios primero para que estén disponibles cuando se carguen los reportes
-    await Future.wait([
-      _loadUsers(),
-      _loadInventory(),
-      _loadRecoveredInventory(),
-    ]);
+    try {
+      // Cargar usuarios e inventarios primero para que estén disponibles cuando se carguen los reportes
+      await Future.wait([
+        _loadUsers(),
+        _loadInventory(),
+        _loadRecoveredInventory(),
+      ]);
 
-    // Cargar datos iniciales rápido, luego el resto en segundo plano
-    await Future.wait([_loadTasksInitial(), _loadReportsInitial()]);
+      // Cargar datos iniciales rápido, luego el resto en segundo plano
+      await Future.wait([_loadTasksInitial(), _loadReportsInitial()]);
 
-    // Después cargar todo en segundo plano
-    _loadAllDataInBackground();
+      // Después cargar todo en segundo plano
+      _loadAllDataInBackground();
+    } catch (e) {
+      // Si hay error durante refresh, restaurar los datos anteriores
+      if (refresh && mounted) {
+        setState(() {
+          _tasks = tasksBackup;
+          _reports = reportsBackup;
+          _filterTasks();
+        });
+      }
+      rethrow; // Re-lanzar para que el caller maneje el error
+    }
   }
 
   // Carga inicial rápida de tareas (primeros elementos)
@@ -634,6 +669,19 @@ class _WorksScreenState extends State<WorksScreen> {
   }
 
   void _onStatusChanged(String status) {
+    // Validar que el estado sea válido para la sección actual
+    if (_selectedSection == 'tareas' && status == 'in_progress') {
+      // Las tareas no tienen estado "en progreso", mostrar mensaje
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Las tareas solo pueden estar pendientes o terminadas'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return; // No cambiar el estado
+    }
+
     setState(() {
       _selectedStatus = status;
       _filterTasks();
@@ -647,6 +695,13 @@ class _WorksScreenState extends State<WorksScreen> {
   void _onSectionChanged(String section) {
     setState(() {
       _selectedSection = section;
+
+      // Si se cambia a tareas y el estado actual es "in_progress", cambiarlo a "pending"
+      // ya que las tareas no tienen estado "in_progress"
+      if (section == 'tareas' && _selectedStatus == 'in_progress') {
+        _selectedStatus = 'pending';
+      }
+
       _filterTasks();
     });
 
@@ -738,9 +793,10 @@ class _WorksScreenState extends State<WorksScreen> {
       );
     }
 
-    return Column(
-      children: [
-        // Search bar
+    return Scaffold(
+      body: Column(
+        children: [
+          // Search bar
         Container(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: Container(
@@ -875,32 +931,54 @@ class _WorksScreenState extends State<WorksScreen> {
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           child: Row(
             children: [
-              Expanded(
-                child: _buildStatusButton(
-                  'Pendientes',
-                  'pending',
-                  Colors.red,
-                  LucideIcons.clock,
+              if (_selectedSection == 'tareas') ...[
+                // Solo mostrar Pendientes y Terminadas para Tareas
+                Expanded(
+                  child: _buildStatusButton(
+                    'Pendientes',
+                    'pending',
+                    Colors.red,
+                    LucideIcons.clock,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildStatusButton(
-                  'En Proceso',
-                  'in_progress',
-                  Colors.orange,
-                  LucideIcons.play,
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildStatusButton(
+                    'Terminadas',
+                    'completed',
+                    Colors.green,
+                    LucideIcons.check,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildStatusButton(
-                  'Terminadas',
-                  'completed',
-                  Colors.green,
-                  LucideIcons.check,
+              ] else ...[
+                // Mostrar las tres opciones para Remitos
+                Expanded(
+                  child: _buildStatusButton(
+                    'Pendientes',
+                    'pending',
+                    Colors.red,
+                    LucideIcons.clock,
+                  ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildStatusButton(
+                    'En Proceso',
+                    'in_progress',
+                    Colors.orange,
+                    LucideIcons.play,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildStatusButton(
+                    'Terminadas',
+                    'completed',
+                    Colors.green,
+                    LucideIcons.check,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -1000,6 +1078,13 @@ class _WorksScreenState extends State<WorksScreen> {
         // Tasks list
         Expanded(child: _buildTasksList()),
       ],
+      ),
+      floatingActionButton: (_selectedSection == 'tareas' && _isETTeamUser) ? FloatingActionButton(
+        onPressed: _showNewTaskDialog,
+        backgroundColor: Colors.orange,
+        tooltip: 'Nueva tarea',
+        child: const Icon(Icons.add, color: Colors.white),
+      ) : null,
     );
   }
 
@@ -1303,11 +1388,38 @@ class _WorksScreenState extends State<WorksScreen> {
                           ),
                         ),
                       ),
-                      // Botón de eliminar solo para equipo ET en cualquier estado
-                      if (_selectedSection == 'remitos' && _isETTeamUser) ...[
+                      // Botones de editar y eliminar para tareas (solo equipo ET)
+                      if (_selectedSection == 'tareas' && _isETTeamUser) ...[
+                        // Botón de editar (solo si no está completada)
+                        if (task['status'] != 'completed') ...[
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: () => _editTask(task),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.shade100,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: Colors.blue.shade300,
+                                  width: 1,
+                                ),
+                              ),
+                              child: Icon(
+                                LucideIcons.edit,
+                                size: 16,
+                                color: Colors.blue.shade600,
+                              ),
+                            ),
+                          ),
+                        ],
+                        // Botón de eliminar (siempre disponible)
                         const SizedBox(width: 8),
                         GestureDetector(
-                          onTap: () => _deleteReport(task),
+                          onTap: () => _deleteTask(task),
                           child: Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 10,
@@ -1666,12 +1778,97 @@ class _WorksScreenState extends State<WorksScreen> {
                     ),
                   ),
                 ),
+
+                // Botón para marcar como completada (solo si no está completada)
+                if (_getTaskStatus(taskToShow) != 'completed') ...[
+                  Container(
+                    padding: EdgeInsets.all(isWideScreen ? 32 : 20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border(
+                        top: BorderSide(
+                          color: Colors.grey.shade200,
+                          width: 1,
+                        ),
+                      ),
+                    ),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () => _completeTask(taskToShow),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: const Text(
+                          'Marcar como Completada',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
         );
       },
     );
+  }
+
+  // Método para marcar una tarea como completada
+  Future<void> _completeTask(Map<String, dynamic> task) async {
+    final taskId = task['_id']?.toString();
+    if (taskId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Error: No se encontró el ID de la tarea'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    try {
+      final response = await TechHubApiClient.markTaskCompleted(taskId: taskId);
+
+      if (response.isSuccess) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Tarea marcada como completada exitosamente'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 3),
+            ),
+          );
+
+          // Cerrar el modal
+          Navigator.of(context).pop();
+
+          // Recargar los datos para reflejar el cambio
+          _loadData(refresh: true);
+        }
+      } else {
+        throw Exception(response.error ?? 'Error desconocido');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al completar la tarea: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   // New helper methods for improved dialog
@@ -2583,7 +2780,7 @@ class _WorksScreenState extends State<WorksScreen> {
             child: _buildOptimizedMapWidget(
               lat: lat,
               lng: lng,
-              mapController: _mapController,
+              // No pasar el controlador global para evitar conflictos
             ),
           ),
         ),
@@ -2597,10 +2794,13 @@ class _WorksScreenState extends State<WorksScreen> {
     required double lng,
     MapController? mapController,
   }) {
+    // Si no se proporciona un controlador, crear uno local para evitar conflictos
+    final localController = mapController ?? MapController();
+
     return Stack(
       children: [
         FlutterMap(
-          mapController: mapController,
+          mapController: localController,
           options: MapUtils.createOptimizedMapOptions(lat: lat, lng: lng),
           children: [
             MapUtils.createOptimizedTileLayer(),
@@ -2955,6 +3155,847 @@ class _WorksScreenState extends State<WorksScreen> {
             duration: const Duration(seconds: 4),
           ),
         );
+      }
+    }
+  }
+
+  // Load teams for dropdown (from camera liable data)
+  Future<void> _loadTeams() async {
+    if (_isTeamsLoaded) return;
+
+    try {
+      final response = await AnalyzerApiClient.getCameras();
+      if (response.isSuccess && response.data != null && mounted) {
+        // Extract unique liable values from cameras
+        final cameras = List<Map<String, dynamic>>.from(response.data!);
+        final uniqueLiables = <String>{};
+
+        for (final camera in cameras) {
+          final liable = camera['liable']?.toString();
+          if (liable != null && liable.isNotEmpty && liable != 'null') {
+            uniqueLiables.add(liable);
+          }
+        }
+
+        // Convert to team format for dropdown
+        final teams = uniqueLiables.map((liable) => {
+          '_id': liable,
+          'name': liable,
+        }).toList();
+
+        if (mounted) {
+          setState(() {
+            _teams = teams;
+            _isTeamsLoaded = true;
+          });
+        }
+      } else {
+        // Mostrar error si no se pudieron cargar los equipos
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Error al cargar equipos: ${response.error ?? "Error desconocido"}',
+              ),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // Mostrar error de conexión
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Error de conexión al cargar equipos. Verifique su conexión a internet.',
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  // Show new task dialog
+  void _showNewTaskDialog() async {
+    // Load teams if not loaded
+    if (!_isTeamsLoaded) {
+      await _loadTeams();
+    }
+
+    // Clear form
+    _taskNameController.clear();
+    _taskDescriptionController.clear();
+    _taskLocationController.clear();
+    _selectedTeamId = null;
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text(
+                'Nueva Tarea',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              content: SizedBox(
+                width: MediaQuery.of(context).size.width * 0.8,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Task Name
+                      TextField(
+                        controller: _taskNameController,
+                        decoration: const InputDecoration(
+                          labelText: 'Nombre de la tarea',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.title),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Task Description
+                      TextField(
+                        controller: _taskDescriptionController,
+                        maxLines: 3,
+                        decoration: const InputDecoration(
+                          labelText: 'Descripción de la tarea',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.description),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Location
+                      TextField(
+                        controller: _taskLocationController,
+                        decoration: InputDecoration(
+                          labelText: 'Ubicación',
+                          border: const OutlineInputBorder(),
+                          prefixIcon: const Icon(Icons.location_on),
+                          suffixIcon: IconButton(
+                            icon: const Icon(Icons.map),
+                            onPressed: () => _showLocationPickerDialog(context, setState),
+                            tooltip: 'Seleccionar en mapa',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Team Dropdown
+                      if (_isTeamsLoaded && _teams.isNotEmpty)
+                        DropdownButtonFormField<String>(
+                          initialValue: _selectedTeamId,
+                          decoration: const InputDecoration(
+                            labelText: 'Equipo responsable',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.group),
+                          ),
+                          items: _teams.map((team) {
+                            return DropdownMenuItem<String>(
+                              value: team['_id']?.toString(),
+                              child: Text(team['name']?.toString() ?? 'Equipo sin nombre'),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedTeamId = value;
+                            });
+                          },
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Por favor selecciona un equipo';
+                            }
+                            return null;
+                          },
+                        )
+                      else if (!_isTeamsLoaded)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Row(
+                            children: [
+                              const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                              const SizedBox(width: 12),
+                              const Expanded(
+                                child: Text('Cargando equipos desde el sistema de cámaras...'),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'No se pudieron cargar los equipos',
+                                style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                'Los equipos se obtienen automáticamente del sistema de cámaras. Verifica tu conexión a internet.',
+                                style: TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
+                              const SizedBox(height: 8),
+                              ElevatedButton.icon(
+                                onPressed: () async {
+                                  setState(() {
+                                    _isTeamsLoaded = false;
+                                  });
+                                  await _loadTeams();
+                                  if (mounted) {
+                                    setState(() {});
+                                  }
+                                },
+                                icon: const Icon(Icons.refresh, size: 16),
+                                label: const Text('Reintentar'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blue,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton(
+                  onPressed: (_isCreatingTask || !_isTeamsLoaded || _teams.isEmpty)
+                      ? null
+                      : () => _createNewTask(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: _isCreatingTask
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation(Colors.white),
+                          ),
+                        )
+                      : const Text('Crear Tarea'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // Show location picker dialog with map
+  void _showLocationPickerDialog(BuildContext context, StateSetter setState) {
+    LatLng selectedLocation = LatLng(-34.6037, -58.3816); // Buenos Aires por defecto
+    bool hasSelectedLocation = false;
+
+    // Crear un controlador de mapa separado para evitar conflictos
+    final MapController locationPickerController = MapController();
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Seleccionar Ubicación'),
+              content: SizedBox(
+                width: MediaQuery.of(context).size.width * 0.9,
+                height: MediaQuery.of(context).size.height * 0.6,
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: FlutterMap(
+                        mapController: locationPickerController,
+                        options: MapOptions(
+                          initialCenter: selectedLocation,
+                          initialZoom: 10,
+                          maxZoom: 18.0,
+                          minZoom: 5.0,
+                          interactionOptions: const InteractionOptions(
+                            flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+                          ),
+                          keepAlive: false,
+                          onTap: (tapPosition, point) {
+                            setState(() {
+                              selectedLocation = point;
+                              hasSelectedLocation = true;
+                            });
+                          },
+                        ),
+                        children: [
+                          TileLayer(
+                            urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            subdomains: ['a', 'b', 'c'],
+                            maxZoom: 18,
+                            minZoom: 5,
+                          ),
+                          if (hasSelectedLocation)
+                            MarkerLayer(
+                              markers: [
+                                Marker(
+                                  point: selectedLocation,
+                                  child: const Icon(
+                                    Icons.location_pin,
+                                    color: Colors.red,
+                                    size: 40,
+                                  ),
+                                ),
+                              ],
+                            ),
+                        ],
+                      ),
+                    ),
+                    if (hasSelectedLocation)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 16),
+                        child: Text(
+                          'Ubicación seleccionada: ${selectedLocation.latitude.toStringAsFixed(6)}, ${selectedLocation.longitude.toStringAsFixed(6)}',
+                          style: const TextStyle(fontSize: 12),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    // Dispose del controlador antes de cerrar
+                    MapUtils.safeDisposeMapController(locationPickerController);
+                    Navigator.of(context).pop();
+                  },
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton(
+                  onPressed: hasSelectedLocation ? () {
+                    _taskLocationController.text = '${selectedLocation.latitude},${selectedLocation.longitude}';
+                    // Dispose del controlador antes de cerrar
+                    MapUtils.safeDisposeMapController(locationPickerController);
+                    Navigator.of(context).pop();
+                  } : null,
+                  child: const Text('Seleccionar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    ).then((_) {
+      // Asegurar que el controlador se dispose cuando se cierra el diálogo
+      MapUtils.safeDisposeMapController(locationPickerController);
+    });
+  }
+
+  // Create new task
+  Future<void> _createNewTask() async {
+    if (_taskNameController.text.trim().isEmpty ||
+        _selectedTeamId == null ||
+        _taskLocationController.text.trim().isEmpty) {
+
+      String errorMessage = 'Por favor complete todos los campos requeridos:';
+      List<String> missingFields = [];
+
+      if (_taskNameController.text.trim().isEmpty) {
+        missingFields.add('Nombre de la tarea');
+      }
+      if (_selectedTeamId == null) {
+        missingFields.add('Equipo responsable');
+      }
+      if (_taskLocationController.text.trim().isEmpty) {
+        missingFields.add('Ubicación');
+      }
+
+      if (missingFields.isNotEmpty) {
+        errorMessage += '\n• ${missingFields.join('\n• ')}';
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isCreatingTask = true;
+    });
+
+    try {
+      final response = await TechHubApiClient.createTask(
+        team: _selectedTeamId!,
+        title: _taskNameController.text.trim(),
+        location: _taskLocationController.text.trim(),
+        toDo: _taskDescriptionController.text.trim(),
+      );
+
+      if (response.isSuccess) {
+        if (mounted) {
+          Navigator.of(context).pop(); // Close dialog
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Tarea creada exitosamente'),
+              backgroundColor: Colors.green,
+            ),
+          );
+
+          // Refresh data
+          _loadData(refresh: true);
+        }
+      } else {
+        throw Exception(response.error ?? 'Error desconocido');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al crear la tarea: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCreatingTask = false;
+        });
+      }
+    }
+  }
+
+  // Editar tarea (solo para equipo ET y tareas no completadas)
+  Future<void> _editTask(Map<String, dynamic> task) async {
+    final taskId = task['_id']?.toString();
+    if (taskId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Error: No se encontró el ID de la tarea'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Precargar valores actuales
+    _taskNameController.text = task['title']?.toString() ?? '';
+    _taskDescriptionController.text = task['toDo']?.toString() ?? '';
+    _taskLocationController.text = task['location']?.toString() ?? '';
+    _selectedTeamId = task['team']?.toString();
+
+    // Mostrar diálogo de edición
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              title: Row(
+                children: [
+                  Icon(LucideIcons.edit, color: Colors.blue.shade600),
+                  const SizedBox(width: 12),
+                  const Text('Editar Tarea'),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Nombre de la tarea
+                    const Text(
+                      'Nombre de la tarea',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _taskNameController,
+                      decoration: InputDecoration(
+                        hintText: 'Ingrese el nombre de la tarea',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Descripción
+                    const Text(
+                      'Descripción',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _taskDescriptionController,
+                      maxLines: 3,
+                      decoration: InputDecoration(
+                        hintText: 'Ingrese la descripción de la tarea',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Equipo responsable
+                    const Text(
+                      'Equipo responsable',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      initialValue: _selectedTeamId,
+                      decoration: InputDecoration(
+                        hintText: 'Seleccione un equipo',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                      ),
+                      items: _teams.map((team) {
+                        return DropdownMenuItem<String>(
+                          value: team['_id']?.toString(),
+                          child: Text(team['name']?.toString() ?? 'Sin nombre'),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedTeamId = value;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Ubicación
+                    const Text(
+                      'Ubicación',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _taskLocationController,
+                            decoration: InputDecoration(
+                              hintText: 'Ingrese la ubicación',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          onPressed: () => _showLocationPickerDialog(context, setState),
+                          icon: Icon(LucideIcons.mapPin, color: Colors.blue.shade600),
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.blue.shade50,
+                            padding: const EdgeInsets.all(12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton(
+                  onPressed: _isCreatingTask ? null : () => _updateTask(taskId),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: _isCreatingTask
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Text('Actualizar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // Eliminar tarea (solo para equipo ET)
+  Future<void> _deleteTask(Map<String, dynamic> task) async {
+    final taskId = task['_id']?.toString();
+    if (taskId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Error: No se encontró el ID de la tarea'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Mostrar diálogo de confirmación
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          title: Row(
+            children: [
+              Icon(LucideIcons.alertTriangle, color: Colors.red.shade600),
+              const SizedBox(width: 12),
+              const Text('Eliminar Tarea'),
+            ],
+          ),
+          content: const Text(
+            '¿Estás seguro de que quieres eliminar esta tarea? Esta acción no se puede deshacer.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Eliminar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      // Mostrar loading
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('Eliminando tarea...'),
+            ],
+          ),
+        ),
+      );
+
+      // Llamar al API para eliminar
+      final response = await TechHubApiClient.deleteTask(taskId: taskId);
+
+      // Cerrar loading
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+
+      if (response.isSuccess) {
+        // Mostrar éxito y recargar datos
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Tarea eliminada exitosamente'),
+              backgroundColor: Colors.green,
+            ),
+          );
+
+          // Mostrar indicador de recarga
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Actualizando lista...'),
+                duration: Duration(seconds: 1),
+              ),
+            );
+          }
+
+          // Recargar los datos (sin cerrar modal ya que se elimina desde la tarjeta)
+          try {
+            await _loadData(refresh: true);
+          } catch (e) {
+            // Si hay error en refresh, intentar recargar sin refresh para mantener datos existentes
+            if (mounted) {
+              try {
+                await _loadData(refresh: false);
+              } catch (e2) {
+                // Si también falla, mostrar error
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error al recargar datos después de eliminar: $e2'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            }
+          }
+        }
+      } else {
+        // Mostrar error
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error al eliminar tarea: ${response.error}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // Cerrar loading si está abierto
+      if (mounted) {
+        try {
+          Navigator.of(context).pop();
+        } catch (_) {}
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error de conexión: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Actualizar tarea
+  Future<void> _updateTask(String taskId) async {
+    if (_taskNameController.text.trim().isEmpty ||
+        _selectedTeamId == null ||
+        _taskLocationController.text.trim().isEmpty) {
+
+      String errorMessage = 'Por favor complete todos los campos requeridos:';
+      List<String> missingFields = [];
+
+      if (_taskNameController.text.trim().isEmpty) {
+        missingFields.add('Nombre de la tarea');
+      }
+      if (_selectedTeamId == null) {
+        missingFields.add('Equipo responsable');
+      }
+      if (_taskLocationController.text.trim().isEmpty) {
+        missingFields.add('Ubicación');
+      }
+
+      if (missingFields.isNotEmpty) {
+        errorMessage += '\n• ${missingFields.join('\n• ')}';
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isCreatingTask = true;
+    });
+
+    try {
+      final response = await TechHubApiClient.editTask(
+        taskId: taskId,
+        team: _selectedTeamId!,
+        title: _taskNameController.text.trim(),
+        location: _taskLocationController.text.trim(),
+        toDo: _taskDescriptionController.text.trim(),
+      );
+
+      if (response.isSuccess) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Tarea actualizada exitosamente'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.of(context).pop();
+          // Recargar los datos
+          _loadData(refresh: true);
+        }
+      } else {
+        throw Exception(response.error ?? 'Error desconocido');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al actualizar tarea: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCreatingTask = false;
+        });
       }
     }
   }
