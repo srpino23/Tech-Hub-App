@@ -16,6 +16,8 @@ class ApiResponse<T> {
   bool get hasData => isSuccess && data != null;
 
   bool get hasError => !isSuccess && error != null;
+
+  get message => null;
 }
 
 class ReportResponse {

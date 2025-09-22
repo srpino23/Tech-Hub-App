@@ -284,7 +284,7 @@ class AnalyzerApiClient {
       return ApiResponse.error(_getErrorMessage(e));
     }
   }
-
+  
   static Future<ApiResponse<List<Map<String, dynamic>>>> getOperationalHistoryByLiable({
     required String liable,
   }) async {
@@ -455,6 +455,71 @@ class AnalyzerApiClient {
         } catch (e) {
           return ApiResponse.error('Error ${response.statusCode}');
         }
+      }
+    } catch (e) {
+      return ApiResponse.error('Error parsing response: $e');
+    }
+  }
+
+  static String _getErrorMessage(dynamic error) {
+    if (error is SocketException) {
+      return 'Network error: Check your internet connection';
+    } else if (error is HttpException) {
+      return 'HTTP error: ${error.message}';
+    } else if (error.toString().contains('TimeoutException')) {
+      return 'Request timeout: The server is taking too long to respond';
+    } else {
+      return 'Unexpected error: ${error.toString()}';
+    }
+  }
+}
+
+  // =======================
+  // Endpoints de Video Streaming
+  // =======================
+
+  static const String streamBaseUrl =
+      'https://74280601d366.sn.mynetname.net/analyzer/api/stream';
+  static const String websocketUrl =
+      'wss://74280601d366.sn.mynetname.net/test/ws';
+
+  // Iniciar stream en el servidor antes de conectar por WebSocket
+  static Future<ApiResponse<Map<String, dynamic>>> startStream({
+    required String cameraId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$streamBaseUrl/start/$cameraId'),
+            headers: _jsonHeaders,
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(
+        response,
+        (data) => data as Map<String, dynamic>,
+      );
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static String getWebSocketUrl(String cameraId) {
+    return '$websocketUrl?camera=$cameraId';
+  }
+
+  static ApiResponse<T> _handleResponse<T>(
+    http.Response response,
+    T Function(dynamic) converter,
+  ) {
+    try {
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final data = json.decode(response.body);
+        return ApiResponse.success(converter(data));
+      } else {
+        final errorData = json.decode(response.body);
+        final message = errorData['message'] ?? 'Error ${response.statusCode}';
+        return ApiResponse.error(message);
       }
     } catch (e) {
       return ApiResponse.error('Error parsing response: $e');
