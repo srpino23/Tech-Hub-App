@@ -36,6 +36,21 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
     'Mantenimiento',
     'Retirada',
   ];
+  final List<String> _brandOptions = [
+    'Axis',
+    'Digifort',
+    'Generic',
+    'Hanwha',
+    'Hikvision',
+    'Huawei',
+    'Onvif',
+    'Pelco',
+    'Samsung',
+    'Siera',
+    'Vivotek',
+    'Zenitel',
+    'Default',
+  ];
   List<String> _zones = [];
   List<String> _serverNames = [];
   List<String> _responsibles = []; // Lista de responsables únicos
@@ -390,6 +405,22 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
     }
   }
 
+  String? _normalizeBrand(String? brand) {
+    if (brand == null || brand.isEmpty) return null;
+
+    // Normalizar la marca al formato del dropdown (capitalizada)
+    final lowerBrand = brand.toLowerCase();
+
+    for (final option in _brandOptions) {
+      if (option.toLowerCase() == lowerBrand) {
+        return option;
+      }
+    }
+
+    // Si no se encuentra en las opciones, capitalizar primera letra
+    return brand[0].toUpperCase() + brand.substring(1).toLowerCase();
+  }
+
   void _showAddItemDialog() {
     showDialog(
       context: context,
@@ -415,6 +446,7 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
     String? selectedResponsible;
     String? selectedStatus =
         'En Línea'; // Estado por defecto para nuevas cámaras
+    String? selectedBrand;
 
     return StatefulBuilder(
       builder: (context, setDialogState) {
@@ -513,6 +545,26 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                               });
                             },
                             icon: LucideIcons.settings,
+                            isWideScreen: isWideScreen,
+                          ),
+
+                          // Marca/Modelo
+                          _buildEditDropdown(
+                            label: 'Marca/Modelo',
+                            value: selectedBrand,
+                            items:
+                                _brandOptions.map((brand) {
+                                  return DropdownMenuItem(
+                                    value: brand,
+                                    child: Text(brand),
+                                  );
+                                }).toList(),
+                            onChanged: (value) {
+                              setDialogState(() {
+                                selectedBrand = value;
+                              });
+                            },
+                            icon: LucideIcons.tag,
                             isWideScreen: isWideScreen,
                           ),
 
@@ -749,6 +801,7 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                                         final cameraData = {
                                           'name': nameController.text,
                                           'type': mappedType,
+                                          'brand': selectedBrand?.toLowerCase(),
                                           'direction': directionController.text,
                                           'zone': _normalizeString(
                                             selectedZone,
@@ -1262,6 +1315,9 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
     // Normalizar el tipo de cámara para que coincida con las opciones del dropdown
     String? selectedType = _translateCameraType(camera['type'] as String?);
 
+    // Normalizar la marca de la cámara
+    String? selectedBrand = _normalizeBrand(camera['brand'] as String?);
+
     // Buscar zona y responsable en las listas normalizadas
     String? selectedZone = _findValueInList(_zones, camera['zone'] as String?);
     String? selectedResponsible = _findValueInList(
@@ -1374,6 +1430,26 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                                     });
                                   },
                                   icon: LucideIcons.settings,
+                                  isWideScreen: isWideScreen,
+                                ),
+
+                                // Marca/Modelo
+                                _buildEditDropdown(
+                                  label: 'Marca/Modelo',
+                                  value: selectedBrand,
+                                  items:
+                                      _brandOptions.map((brand) {
+                                        return DropdownMenuItem(
+                                          value: brand,
+                                          child: Text(brand),
+                                        );
+                                      }).toList(),
+                                  onChanged: (value) {
+                                    setDialogState(() {
+                                      selectedBrand = value;
+                                    });
+                                  },
+                                  icon: LucideIcons.tag,
                                   isWideScreen: isWideScreen,
                                 ),
 
@@ -1584,6 +1660,7 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                                               final cameraData = {
                                                 'name': nameController.text,
                                                 'type': mappedType,
+                                                'brand': selectedBrand?.toLowerCase(),
                                                 'direction':
                                                     directionController.text,
                                                 'zone': _normalizeString(

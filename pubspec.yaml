@@ -1,7 +1,7 @@
 name: tech_hub
 description: "Tech Hub Aplicacion Tecnica"
 publish_to: 'none'
-version: 4.0.1
+version: 4.1.1
 
 environment:
   sdk: ^3.7.0

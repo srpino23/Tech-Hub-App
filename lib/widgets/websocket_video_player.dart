@@ -27,14 +27,13 @@ class _WebSocketVideoPlayerState extends State<WebSocketVideoPlayer> {
   StreamSubscription? _sub;
   Timer? _hb;
   Timer? _timeout;
+  bool _isDisposing = false;
 
   Uint8List? _frame;
   bool _connecting = false;
   bool _streaming = false;
   bool _error = false;
   String _errorMsg = '';
-
-  // Métricas simplificadas eliminadas
 
   // Buffer simple para intentar recomponer JPEG fragmentado cuando falle la validación directa
   final List<int> _buf = <int>[];
@@ -45,11 +44,13 @@ class _WebSocketVideoPlayerState extends State<WebSocketVideoPlayer> {
     super.initState();
     // Autoiniciar conexión al abrir el popup
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       final cameraId =
           widget.camera['_id']?.toString() ?? widget.camera['id']?.toString();
       if (cameraId != null) {
         _startThenConnect(cameraId);
       } else {
+        if (!mounted) return;
         setState(() {
           _error = true;
           _errorMsg = 'ID de cámara no encontrado';
@@ -74,10 +75,10 @@ class _WebSocketVideoPlayerState extends State<WebSocketVideoPlayer> {
         throw Exception(startRes.message ?? 'No se pudo iniciar el stream');
       }
       await Future.delayed(const Duration(milliseconds: 500));
-      if (!mounted) return;
+      if (!mounted || _isDisposing) return;
       await _connect(cameraId);
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || _isDisposing) return;
       setState(() {
         _error = true;
         _errorMsg = e.toString();
@@ -94,7 +95,7 @@ class _WebSocketVideoPlayerState extends State<WebSocketVideoPlayer> {
 
       _sub = _socket!.listen(
         (data) async {
-          if (!mounted) return;
+          if (!mounted || _isDisposing) return;
           try {
             Uint8List? bytes;
             if (data is List<int>) {
@@ -105,10 +106,7 @@ class _WebSocketVideoPlayerState extends State<WebSocketVideoPlayer> {
             }
             if (bytes == null) return;
 
-            // métricas eliminadas
-
             // Con servidor MJPEG, acumulamos y extraemos frames JPEG por SOI/EOI
-
             _buf.addAll(bytes);
             if (_buf.length > _bufMax) _buf.clear();
 
@@ -117,20 +115,20 @@ class _WebSocketVideoPlayerState extends State<WebSocketVideoPlayer> {
               _emit(merged);
               _buf.clear();
             }
-            setState(() {});
+            if (mounted && !_isDisposing) setState(() {});
           } catch (_) {
             // ignorar chunk inválido
           }
         },
         onDone: () {
-          if (!mounted) return;
+          if (!mounted || _isDisposing) return;
           setState(() {
             _streaming = false;
             _connecting = false;
           });
         },
         onError: (e) {
-          if (!mounted) return;
+          if (!mounted || _isDisposing) return;
           setState(() {
             _error = true;
             _errorMsg = 'WS error: $e';
@@ -138,11 +136,12 @@ class _WebSocketVideoPlayerState extends State<WebSocketVideoPlayer> {
             _connecting = false;
           });
         },
+        cancelOnError: true,
       );
 
       _startHeartbeat();
       _timeout = Timer(const Duration(seconds: 15), () {
-        if (!mounted) return;
+        if (!mounted || _isDisposing) return;
         if (_connecting && !_streaming) {
           setState(() {
             _error = true;
@@ -152,7 +151,7 @@ class _WebSocketVideoPlayerState extends State<WebSocketVideoPlayer> {
         }
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || _isDisposing) return;
       setState(() {
         _error = true;
         _errorMsg = 'No se pudo conectar: $e';
@@ -203,7 +202,7 @@ class _WebSocketVideoPlayerState extends State<WebSocketVideoPlayer> {
   }
 
   void _emit(Uint8List bytes) {
-    if (!mounted) return;
+    if (!mounted || _isDisposing) return;
     setState(() {
       _frame = bytes;
       if (!_streaming) {
@@ -216,6 +215,10 @@ class _WebSocketVideoPlayerState extends State<WebSocketVideoPlayer> {
   void _startHeartbeat() {
     _hb?.cancel();
     _hb = Timer.periodic(const Duration(seconds: 30), (t) {
+      if (_isDisposing) {
+        t.cancel();
+        return;
+      }
       if (_socket?.readyState == WebSocket.open) {
         try {
           _socket?.add('ping');
@@ -228,64 +231,76 @@ class _WebSocketVideoPlayerState extends State<WebSocketVideoPlayer> {
     });
   }
 
-  // stop() removido; se maneja en dispose/close del diálogo
-
   // métricas eliminadas
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      insetPadding: const EdgeInsets.all(16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              children: [
-                const Icon(LucideIcons.video, size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    widget.camera['name']?.toString() ?? 'Cámara',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (!didPop) {
+          final navigator = Navigator.of(context);
+          await _cleanupConnection();
+          if (navigator.mounted) navigator.pop(result);
+        }
+      },
+      child: Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        insetPadding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  const Icon(LucideIcons.video, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      widget.camera['name']?.toString() ?? 'Cámara',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            width: widget.width,
-            height: widget.height,
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: Colors.black,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color:
-                    _connecting
-                        ? Colors.orange
-                        : _streaming
-                        ? Colors.green
-                        : _error
-                        ? Colors.red
-                        : Colors.grey,
+                  IconButton(
+                    onPressed: () async {
+                      final navigator = Navigator.of(context);
+                      await _cleanupConnection();
+                      if (navigator.mounted) navigator.pop();
+                    },
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
               ),
             ),
-            clipBehavior: Clip.antiAlias,
-            child: _buildSurface(),
-          ),
-          const SizedBox(height: 12),
-        ],
+            Container(
+              width: widget.width,
+              height: widget.height,
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.black,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color:
+                      _connecting
+                          ? Colors.orange
+                          : _streaming
+                          ? Colors.green
+                          : _error
+                          ? Colors.red
+                          : Colors.grey,
+                ),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: _buildSurface(),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
       ),
     );
   }
@@ -318,12 +333,45 @@ class _WebSocketVideoPlayerState extends State<WebSocketVideoPlayer> {
 
   @override
   void dispose() {
-    _timeout?.cancel();
-    _hb?.cancel();
-    _sub?.cancel();
-    _socket?.close();
+    _isDisposing = true;
+    try {
+      _timeout?.cancel();
+    } catch (_) {}
+    try {
+      _hb?.cancel();
+    } catch (_) {}
+    try {
+      _sub?.pause();
+    } catch (_) {}
+    try {
+      _socket?.close(WebSocketStatus.normalClosure, 'closing');
+    } catch (_) {}
+    try {
+      _sub?.cancel();
+    } catch (_) {}
     _socket = null;
     _sub = null;
     super.dispose();
+  }
+
+  Future<void> _cleanupConnection() async {
+    _isDisposing = true;
+    try {
+      _timeout?.cancel();
+    } catch (_) {}
+    try {
+      _hb?.cancel();
+    } catch (_) {}
+    try {
+      _sub?.pause();
+    } catch (_) {}
+    try {
+      await _socket?.close(WebSocketStatus.normalClosure, 'closing');
+    } catch (_) {}
+    try {
+      await _sub?.cancel();
+    } catch (_) {}
+    _socket = null;
+    _sub = null;
   }
 }
