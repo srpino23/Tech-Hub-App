@@ -56,7 +56,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
 
     try {
-      final response = await AnalyzerApiClient.getOperationalHistoryByLiable(liable: liable);
+      final response = await AnalyzerApiClient.getOperationalHistoryByLiable(
+        liable: liable,
+      );
       if (response.isSuccess && response.data != null && mounted) {
         try {
           final data = List<Map<String, dynamic>>.from(response.data!);
@@ -73,21 +75,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
       } else {
         // Fallback: filtrar datos generales por equipo
         if (mounted) {
-          final filteredData = _operationalHistory.where((entry) {
-            final liableOperability = entry['liableOperability'] as List<dynamic>? ?? [];
-            return liableOperability.any((e) => e['liable'] == liable);
-          }).map((entry) {
-            // Crear una entrada con solo la operatividad del equipo seleccionado
-            final liableOperability = entry['liableOperability'] as List<dynamic>? ?? [];
-            final liableEntry = liableOperability.firstWhere(
-              (e) => e['liable'] == liable,
-              orElse: () => null,
-            );
-            return {
-              ...entry,
-              'generalOperability': liableEntry?['percentage'] ?? 0,
-            };
-          }).toList();
+          final filteredData =
+              _operationalHistory
+                  .where((entry) {
+                    final liableOperability =
+                        entry['liableOperability'] as List<dynamic>? ?? [];
+                    return liableOperability.any((e) => e['liable'] == liable);
+                  })
+                  .map((entry) {
+                    // Crear una entrada con solo la operatividad del equipo seleccionado
+                    final liableOperability =
+                        entry['liableOperability'] as List<dynamic>? ?? [];
+                    final liableEntry = liableOperability.firstWhere(
+                      (e) => e['liable'] == liable,
+                      orElse: () => null,
+                    );
+                    return {
+                      ...entry,
+                      'generalOperability': liableEntry?['percentage'] ?? 0,
+                    };
+                  })
+                  .toList();
 
           setState(() {
             _selectedLiableHistory = filteredData;
@@ -98,21 +106,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } catch (e) {
       // Fallback: filtrar datos generales por equipo
       if (mounted) {
-        final filteredData = _operationalHistory.where((entry) {
-          final liableOperability = entry['liableOperability'] as List<dynamic>? ?? [];
-          return liableOperability.any((e) => e['liable'] == liable);
-        }).map((entry) {
-          // Crear una entrada con solo la operatividad del equipo seleccionado
-          final liableOperability = entry['liableOperability'] as List<dynamic>? ?? [];
-          final liableEntry = liableOperability.firstWhere(
-            (e) => e['liable'] == liable,
-            orElse: () => null,
-          );
-          return {
-            ...entry,
-            'generalOperability': liableEntry?['percentage'] ?? 0,
-          };
-        }).toList();
+        final filteredData =
+            _operationalHistory
+                .where((entry) {
+                  final liableOperability =
+                      entry['liableOperability'] as List<dynamic>? ?? [];
+                  return liableOperability.any((e) => e['liable'] == liable);
+                })
+                .map((entry) {
+                  // Crear una entrada con solo la operatividad del equipo seleccionado
+                  final liableOperability =
+                      entry['liableOperability'] as List<dynamic>? ?? [];
+                  final liableEntry = liableOperability.firstWhere(
+                    (e) => e['liable'] == liable,
+                    orElse: () => null,
+                  );
+                  return {
+                    ...entry,
+                    'generalOperability': liableEntry?['percentage'] ?? 0,
+                  };
+                })
+                .toList();
 
         setState(() {
           _selectedLiableHistory = filteredData;
@@ -722,17 +736,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                           ),
                         ),
-                        ..._liableOperability.map((liable) => DropdownMenuItem<String>(
-                          value: liable['liable'],
-                          child: Text(
-                            liable['liable'] ?? 'Equipo desconocido',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade700,
-                              fontWeight: FontWeight.w500,
+                        ..._liableOperability.map(
+                          (liable) => DropdownMenuItem<String>(
+                            value: liable['liable'],
+                            child: Text(
+                              liable['liable'] ?? 'Equipo desconocido',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade700,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           ),
-                        )),
+                        ),
                       ],
                       onChanged: (value) {
                         setState(() {
@@ -763,7 +779,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             SizedBox(height: 8),
                             Text(
                               'Cargando datos del equipo...',
-                              style: TextStyle(color: Colors.grey, fontSize: 12),
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 12,
+                              ),
                             ),
                           ],
                         ),
@@ -968,13 +987,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   List<Map<String, dynamic>> _getFilteredOperationalHistory() {
-    final sourceHistory = _selectedLiable != null && _selectedLiableHistory.isNotEmpty
-        ? _selectedLiableHistory
-        : _operationalHistory;
+    final sourceHistory =
+        _selectedLiable != null && _selectedLiableHistory.isNotEmpty
+            ? _selectedLiableHistory
+            : _operationalHistory;
 
     if (_startDate == null || _endDate == null) return sourceHistory;
 
-    return sourceHistory.where((entry) {
+    final filtered = sourceHistory.where((entry) {
       try {
         final dateData = entry['date'];
         DateTime entryDate;
@@ -987,9 +1007,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           return false;
         }
 
-        final dateFilter = entryDate.isAfter(
-              _startDate!.subtract(const Duration(days: 1)),
-            ) &&
+        final dateFilter =
+            entryDate.isAfter(_startDate!.subtract(const Duration(days: 1))) &&
             entryDate.isBefore(_endDate!.add(const Duration(days: 1)));
 
         return dateFilter;
@@ -997,6 +1016,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return false;
       }
     }).toList();
+
+    // Ordenar por fecha ascendente (más antiguo primero)
+    filtered.sort((a, b) {
+      try {
+        DateTime dateA, dateB;
+
+        final dateDataA = a['date'];
+        final dateDataB = b['date'];
+
+        if (dateDataA is Map && dateDataA['\$date'] != null) {
+          dateA = DateTime.parse(dateDataA['\$date']);
+        } else if (dateDataA is String) {
+          dateA = DateTime.parse(dateDataA);
+        } else {
+          return 0;
+        }
+
+        if (dateDataB is Map && dateDataB['\$date'] != null) {
+          dateB = DateTime.parse(dateDataB['\$date']);
+        } else if (dateDataB is String) {
+          dateB = DateTime.parse(dateDataB);
+        } else {
+          return 0;
+        }
+
+        return dateA.compareTo(dateB);
+      } catch (e) {
+        return 0;
+      }
+    });
+
+    return filtered;
   }
 
   Future<void> _selectDateRange() async {

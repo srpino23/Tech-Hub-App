@@ -121,7 +121,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       labelText: 'Tipo',
                       border: OutlineInputBorder(),
                     ),
-                    value: _selectedType,
+                    initialValue: _selectedType,
                     items: [
                       const DropdownMenuItem(value: null, child: Text('Todos')),
                       ..._types.map((type) => DropdownMenuItem(
@@ -142,7 +142,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       labelText: 'Severidad',
                       border: OutlineInputBorder(),
                     ),
-                    value: _selectedSeverity,
+                    initialValue: _selectedSeverity,
                     items: [
                       const DropdownMenuItem(value: null, child: Text('Todas')),
                       ..._severities.map((severity) => DropdownMenuItem(
