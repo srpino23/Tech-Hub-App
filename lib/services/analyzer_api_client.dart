@@ -285,6 +285,166 @@ class AnalyzerApiClient {
     }
   }
 
+  static Future<ApiResponse<List<Map<String, dynamic>>>>
+  getOperationalHistoryByLiable({required String liable}) async {
+    try {
+      // Obtener todos los datos de operational history
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/operationalHistory/getOperationalHistory'),
+            headers: _jsonHeaders,
+          )
+          .timeout(timeoutDuration);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return _handleResponse<List<Map<String, dynamic>>>(response, (data) {
+          if (data is List) {
+            // Filtrar y transformar los datos para el liable específico
+            final filteredData =
+                data
+                    .where((entry) {
+                      final liableOperability =
+                          entry['liableOperability'] as List<dynamic>? ?? [];
+                      return liableOperability.any(
+                        (e) => e['liable'] == liable,
+                      );
+                    })
+                    .map((entry) {
+                      final liableOperability =
+                          entry['liableOperability'] as List<dynamic>? ?? [];
+                      final liableEntry = liableOperability.firstWhere(
+                        (e) => e['liable'] == liable,
+                        orElse: () => null,
+                      );
+
+                      // Crear entrada con la operatividad específica del liable
+                      return {
+                        ...Map<String, dynamic>.from(entry),
+                        'generalOperability': liableEntry?['percentage'] ?? 0,
+                        'selectedLiable': liable,
+                        'selectedLiableData': liableEntry,
+                      };
+                    })
+                    .toList();
+
+            return filteredData;
+          } else if (data is Map &&
+              data.containsKey('data') &&
+              data['data'] is List) {
+            final listData = List<Map<String, dynamic>>.from(data['data']);
+
+            // Aplicar el mismo filtrado
+            final filteredData =
+                listData
+                    .where((entry) {
+                      final liableOperability =
+                          entry['liableOperability'] as List<dynamic>? ?? [];
+                      return liableOperability.any(
+                        (e) => e['liable'] == liable,
+                      );
+                    })
+                    .map((entry) {
+                      final liableOperability =
+                          entry['liableOperability'] as List<dynamic>? ?? [];
+                      final liableEntry = liableOperability.firstWhere(
+                        (e) => e['liable'] == liable,
+                        orElse: () => null,
+                      );
+
+                      return {
+                        ...Map<String, dynamic>.from(entry),
+                        'generalOperability': liableEntry?['percentage'] ?? 0,
+                        'selectedLiable': liable,
+                        'selectedLiableData': liableEntry,
+                      };
+                    })
+                    .toList();
+
+            return filteredData;
+          } else {
+            return [];
+          }
+        });
+      } else {
+        // Si falla, devolver error
+        return _handleResponse<List<Map<String, dynamic>>>(
+          response,
+          (data) => [],
+        );
+      }
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  // =======================
+  // Endpoints de Status Reports
+  // =======================
+
+  static Future<ApiResponse<Map<String, dynamic>>> getLastStatusReport() async {
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/status/last'), headers: _jsonHeaders)
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(
+        response,
+        (data) => data as Map<String, dynamic>,
+      );
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<List<Map<String, dynamic>>>>
+  getStatusReportsByType({required String type, int limit = 10}) async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/status/type/$type?limit=$limit'),
+            headers: _jsonHeaders,
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<List<Map<String, dynamic>>>(
+        response,
+        (data) => List<Map<String, dynamic>>.from(data),
+      );
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> getAllStatusReports({
+    int page = 1,
+    int limit = 20,
+    String? type,
+    String? severity,
+  }) async {
+    try {
+      final queryParams = {
+        'page': page.toString(),
+        'limit': limit.toString(),
+        if (type != null) 'type': type,
+        if (severity != null) 'severity': severity,
+      };
+      final uri = Uri.parse(
+        '$baseUrl/status/all',
+      ).replace(queryParameters: queryParams);
+
+      final response = await http
+          .get(uri, headers: _jsonHeaders)
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(
+        response,
+        (data) => data as Map<String, dynamic>,
+      );
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
   // =======================
   // Endpoints de Video Streaming
   // =======================
@@ -326,11 +486,24 @@ class AnalyzerApiClient {
     try {
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = json.decode(response.body);
-        return ApiResponse.success(converter(data));
+        if (data != null) {
+          try {
+            return ApiResponse.success(converter(data));
+          } catch (e) {
+            return ApiResponse.error('Error converting response data: $e');
+          }
+        } else {
+          return ApiResponse.error('Respuesta vacía del servidor');
+        }
       } else {
-        final errorData = json.decode(response.body);
-        final message = errorData['message'] ?? 'Error ${response.statusCode}';
-        return ApiResponse.error(message);
+        try {
+          final errorData = json.decode(response.body);
+          final message =
+              errorData['message'] ?? 'Error ${response.statusCode}';
+          return ApiResponse.error(message);
+        } catch (e) {
+          return ApiResponse.error('Error ${response.statusCode}');
+        }
       }
     } catch (e) {
       return ApiResponse.error('Error parsing response: $e');

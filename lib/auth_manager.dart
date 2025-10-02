@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'services/techhub_api_client.dart';
+import 'services/analyzer_api_client.dart';
 
 class AuthManager extends ChangeNotifier {
   bool _isLoggedIn = false;
@@ -11,6 +12,7 @@ class AuthManager extends ChangeNotifier {
   String? _teamName;
   String? _teamId;
   bool _isLoading = false;
+  bool _hasNewNotifications = false;
 
   bool get isLoggedIn => _isLoggedIn;
   String? get userName => _userName;
@@ -20,6 +22,7 @@ class AuthManager extends ChangeNotifier {
   String? get teamName => _teamName;
   String? get teamId => _teamId;
   bool get isLoading => _isLoading;
+  bool get hasNewNotifications => _hasNewNotifications;
 
   static const String _isLoggedInKey = 'is_logged_in';
   static const String _userNameKey = 'user_name';
@@ -28,6 +31,7 @@ class AuthManager extends ChangeNotifier {
   static const String _userIdKey = 'user_id';
   static const String _teamNameKey = 'team_name';
   static const String _teamIdKey = 'team_id';
+  static const String _hasNewNotificationsKey = 'has_new_notifications';
 
   AuthManager() {
     _loadSavedLoginState();
@@ -43,6 +47,7 @@ class AuthManager extends ChangeNotifier {
       _userId = prefs.getString(_userIdKey);
       _teamName = prefs.getString(_teamNameKey);
       _teamId = prefs.getString(_teamIdKey);
+      _hasNewNotifications = prefs.getBool(_hasNewNotificationsKey) ?? false;
       notifyListeners();
     } catch (e) {
       // Error loading saved state, continue with default values
@@ -128,6 +133,7 @@ class AuthManager extends ChangeNotifier {
         if (teamId != null) {
           await prefs.setString(_teamIdKey, teamId);
         }
+        await prefs.setBool(_hasNewNotificationsKey, _hasNewNotifications);
 
         _isLoggedIn = true;
         _userName = userName;
@@ -138,6 +144,10 @@ class AuthManager extends ChangeNotifier {
         _teamId = teamId;
         _isLoading = false;
         notifyListeners();
+
+        // Verificar reportes nuevos después del login
+        await checkForNewReports();
+
         return null; // Success, no error message
       } else {
         _isLoading = false;
@@ -152,6 +162,60 @@ class AuthManager extends ChangeNotifier {
     }
   }
 
+  Future<void> checkForNewReports() async {
+    try {
+      // Obtener el último reporte de status_report
+      final statusReportResponse = await AnalyzerApiClient.getLastStatusReport();
+      if (statusReportResponse.isSuccess && statusReportResponse.data != null) {
+        final report = statusReportResponse.data!;
+        final reportId = report['_id'];
+        final prefs = await SharedPreferences.getInstance();
+        final lastStatusReportId = prefs.getString('last_status_report_id');
+
+        if (lastStatusReportId != reportId) {
+          // Nuevo reporte, mostrar notificación
+          _hasNewNotifications = true;
+          await prefs.setString('last_status_report_id', reportId);
+          notifyListeners();
+        }
+      }
+
+      // Obtener reportes de stabilization_alert
+      final stabilizationReportsResponse = await AnalyzerApiClient.getStatusReportsByType(type: 'stabilization_alert', limit: 10);
+      if (stabilizationReportsResponse.isSuccess && stabilizationReportsResponse.data != null) {
+        final reports = stabilizationReportsResponse.data!;
+        final prefs = await SharedPreferences.getInstance();
+
+        for (final report in reports) {
+          final zone = report['zone'];
+          if (zone != null) {
+            final reportId = report['_id'];
+            final key = 'last_stabilization_alert_${zone}_id';
+            final lastId = prefs.getString(key);
+
+            if (lastId != reportId) {
+              // Nuevo reporte para esta zona
+              _hasNewNotifications = true;
+              await prefs.setString(key, reportId);
+              notifyListeners();
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // Error checking reports, continue silently
+    }
+  }
+
+  Future<void> markNotificationsAsRead() async {
+    if (_hasNewNotifications) {
+      _hasNewNotifications = false;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_hasNewNotificationsKey, false);
+      notifyListeners();
+    }
+  }
+
   Future<void> logout() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -162,6 +226,7 @@ class AuthManager extends ChangeNotifier {
       await prefs.remove(_userIdKey);
       await prefs.remove(_teamNameKey);
       await prefs.remove(_teamIdKey);
+      await prefs.remove(_hasNewNotificationsKey);
 
       _isLoggedIn = false;
       _userName = null;

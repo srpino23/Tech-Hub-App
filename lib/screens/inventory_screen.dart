@@ -296,7 +296,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                   vertical: 8,
                 ),
               ),
-              value: _selectedTeamId,
+              initialValue: _selectedTeamId,
               items:
                   _teams.map((team) {
                     return DropdownMenuItem<String>(
@@ -1454,7 +1454,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                           ),
                           prefixIcon: const Icon(LucideIcons.users),
                         ),
-                        value: selectedTeamId,
+                        initialValue: selectedTeamId,
                         items:
                             _teams.map((team) {
                               return DropdownMenuItem<String>(
@@ -1799,7 +1799,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                           ),
                           prefixIcon: const Icon(LucideIcons.clipboard),
                         ),
-                        value: condition,
+                        initialValue: condition,
                         items: const [
                           DropdownMenuItem(
                             value: 'bueno',
@@ -2107,7 +2107,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                           ),
                           prefixIcon: const Icon(LucideIcons.activity),
                         ),
-                        value: status,
+                        initialValue: status,
                         items: const [
                           DropdownMenuItem(
                             value: 'recuperado',
@@ -2135,7 +2135,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                           ),
                           prefixIcon: const Icon(LucideIcons.clipboard),
                         ),
-                        value: condition,
+                        initialValue: condition,
                         items: const [
                           DropdownMenuItem(
                             value: 'bueno',
@@ -2291,7 +2291,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                           ),
                           prefixIcon: const Icon(LucideIcons.users),
                         ),
-                        value: selectedTeamId,
+                        initialValue: selectedTeamId,
                         items:
                             _teams.map((team) {
                               return DropdownMenuItem<String>(

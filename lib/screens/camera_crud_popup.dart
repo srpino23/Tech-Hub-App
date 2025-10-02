@@ -1216,7 +1216,7 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
           ),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
-            value: value,
+            initialValue: value,
             items: items,
             onChanged: onChanged,
             style: TextStyle(
@@ -2349,7 +2349,7 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: value,
+          initialValue: value,
           style: TextStyle(
             fontSize: isWideScreen ? 16 : 14,
             color: Colors.grey.shade800,

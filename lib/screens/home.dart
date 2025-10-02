@@ -8,6 +8,7 @@ import 'works_screen.dart';
 import 'create_report_screen.dart';
 import 'dashboard_screen.dart';
 import 'inventory_screen.dart';
+import 'notifications_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final AuthManager authManager;
@@ -172,12 +173,37 @@ class _HomeScreenState extends State<HomeScreen> {
               color: Colors.grey.shade100,
               shape: BoxShape.circle,
             ),
-            child: IconButton(
-              icon: const Icon(
-                Icons.notifications_outlined,
-                color: Colors.grey,
-              ),
-              onPressed: () {},
+            child: Stack(
+              children: [
+                IconButton(
+                  icon: const Icon(
+                    Icons.notifications_outlined,
+                    color: Colors.grey,
+                  ),
+                  onPressed: () {
+                    widget.authManager.markNotificationsAsRead();
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const NotificationsScreen(),
+                      ),
+                    );
+                  },
+                ),
+                if (widget.authManager.hasNewNotifications)
+                  Positioned(
+                    right: 8,
+                    top: 8,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ],
