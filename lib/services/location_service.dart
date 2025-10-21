@@ -122,6 +122,8 @@ class LocationService {
             Uri.parse(_updateLocationUrl),
             headers: {'Content-Type': 'application/json'},
             body: json.encode({
+              'username': _authManager.userName,
+              'password': _authManager.password,
               'userId': _authManager.userId,
               'longitude': position.longitude.toString(),
               'latitude': position.latitude.toString(),

@@ -44,7 +44,10 @@ class _CamerasScreenState extends State<CamerasScreen> {
         _isLoading = true;
       });
 
-      final response = await AnalyzerApiClient.getCameras();
+      final response = await AnalyzerApiClient.getCameras(
+        username: widget.authManager.userName!,
+        password: widget.authManager.password!,
+      );
 
       if (!mounted) return;
 

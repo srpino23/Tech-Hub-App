@@ -33,6 +33,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<Map<String, dynamic>> _zoneOperability = [];
   List<Map<String, dynamic>> _liableOperability = [];
 
+  // Serie seleccionada para el historial: "Todos los equipos", "General" o un equipo específico
+  String _selectedSeries = 'Todos los equipos';
+
   DateTime? _startDate;
   DateTime? _endDate;
 
@@ -54,8 +57,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     try {
       final results = await Future.wait([
-        AnalyzerApiClient.getOperationalHistory(),
-        AnalyzerApiClient.getCameras(),
+        AnalyzerApiClient.getOperationalHistory(
+          username: widget.authManager.userName!,
+          password: widget.authManager.password!,
+        ),
+        AnalyzerApiClient.getCameras(
+          username: widget.authManager.userName!,
+          password: widget.authManager.password!,
+        ),
       ]);
 
       final historyResponse = results[0];
@@ -105,7 +114,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'removed': 0,
     };
 
+    final isBasic2Team = widget.authManager.teamName?.toLowerCase() == 'basic2';
+
     for (var camera in _cameras) {
+      // Si es basic2, solo contar cámaras de zona norte y zona sur
+      if (isBasic2Team) {
+        final liable = camera['liable']?.toString().toLowerCase() ?? '';
+        if (liable != 'zona norte' && liable != 'zona sur') {
+          continue; // Saltar cámaras que no son de estos equipos
+        }
+      }
+
       final status = camera['status']?.toString().toLowerCase() ?? 'offline';
       if (_generalStatus.containsKey(status)) {
         _generalStatus[status] = _generalStatus[status]! + 1;
@@ -126,6 +145,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     // El porcentaje de operatividad es: cámaras funcionando / cámaras operacionales (sin retiradas)
     return (functionalCameras / totalOperationalCameras) * 100;
+  }
+
+  // Helper method para verificar si un equipo puede ser visto por el usuario actual
+  bool _canViewLiable(String liableName) {
+    if (widget.authManager.teamName?.toLowerCase() != 'basic2') return true;
+    final name = liableName.toLowerCase();
+    return name == 'zona norte' || name == 'zona sur';
   }
 
   // Método auxiliar para obtener el total de cámaras operacionales (sin retiradas)
@@ -181,6 +207,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     }
 
+    final isBasic2Team = widget.authManager.teamName?.toLowerCase() == 'basic2';
+
     return RefreshIndicator(
       onRefresh: _loadDashboardData,
       color: Colors.orange,
@@ -192,8 +220,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             _buildGeneralOperabilitySection(),
             const SizedBox(height: 24),
             _buildLiableOperabilitySection(),
-            const SizedBox(height: 24),
-            _buildZoneOperabilitySection(),
+            // Ocultar la sección de Operatividad por Zona para basic2
+            if (!isBasic2Team) ...[
+              const SizedBox(height: 24),
+              _buildZoneOperabilitySection(),
+            ],
             const SizedBox(height: 24),
             _buildOperationalHistorySection(),
           ],
@@ -416,8 +447,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildLiableOperabilitySection() {
-    // Mostrar todos los equipos, ordenados por nombre
+    // Mostrar todos los equipos, ordenados por nombre (excluyendo edla y com)
+    // Filtrar por equipos permitidos si es basic2
     final sortedLiables = List<Map<String, dynamic>>.from(_liableOperability)
+        .where((liable) {
+          final name = (liable['liable'] ?? '').toString().toLowerCase();
+          return name != 'edla' && name != 'com' && _canViewLiable(name);
+        })
+        .toList()
       ..sort(
         (a, b) => (a['liable'] ?? '').toString().toLowerCase().compareTo(
           (b['liable'] ?? '').toString().toLowerCase(),
@@ -534,47 +571,115 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
             const SizedBox(height: 20),
-            // Selector de fechas
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade200),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    LucideIcons.calendar,
-                    size: 16,
-                    color: Colors.grey.shade600,
+            // Selectores apilados para mejor usabilidad en móvil
+            Column(
+              children: [
+                // Selector de fechas (arriba)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey.shade200),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: _selectDateRange,
-                      child: Text(
-                        _startDate != null && _endDate != null
-                            ? '${_formatDate(_startDate!)} - ${_formatDate(_endDate!)}'
-                            : 'Seleccionar rango de fechas',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade700,
-                          fontWeight: FontWeight.w500,
+                  child: Row(
+                    children: [
+                      Icon(
+                        LucideIcons.calendar,
+                        size: 16,
+                        color: Colors.grey.shade600,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: _selectDateRange,
+                          child: Text(
+                            _startDate != null && _endDate != null
+                                ? '${_formatDate(_startDate!)} - ${_formatDate(_endDate!)}'
+                                : 'Seleccionar rango de fechas',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade700,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                      GestureDetector(
+                        onTap: _selectDateRange,
+                        child: Icon(
+                          LucideIcons.chevronDown,
+                          size: 16,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
                   ),
-                  GestureDetector(
-                    onTap: _selectDateRange,
-                    child: Icon(
-                      LucideIcons.chevronDown,
-                      size: 16,
-                      color: Colors.grey.shade600,
-                    ),
+                ),
+                const SizedBox(height: 8),
+                // Selector de serie (abajo)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey.shade200),
                   ),
-                ],
-              ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        LucideIcons.users,
+                        size: 16,
+                        color: Colors.grey.shade600,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: SizedBox(
+                          width: 180,
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              isExpanded: true,
+                              isDense: true,
+                              value:
+                                  _getSeriesOptions().contains(_selectedSeries)
+                                      ? _selectedSeries
+                                      : 'Todos los equipos',
+                              items:
+                                  _getSeriesOptions()
+                                      .map(
+                                        (serie) => DropdownMenuItem<String>(
+                                          value: serie,
+                                          child: Text(
+                                            serie,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.grey.shade700,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                      .toList(),
+                              onChanged: (value) {
+                                if (value == null) return;
+                                setState(() {
+                                  _selectedSeries = value;
+                                });
+                              },
+                              icon: Icon(
+                                LucideIcons.chevronDown,
+                                size: 14,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             SizedBox(
@@ -622,8 +727,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       index < filteredHistory.length &&
                                       index % 5 == 0) {
                                     try {
+                                      // Invertir el índice para que coincida con los datos invertidos
+                                      final actualIndex = filteredHistory.length - 1 - index;
                                       final dateData =
-                                          filteredHistory[index]['date'];
+                                          filteredHistory[actualIndex]['date'];
                                       DateTime date;
 
                                       if (dateData is Map &&
@@ -685,32 +792,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   .toDouble(),
                           minY: 0,
                           maxY: 100,
-                          lineBarsData: [
-                            LineChartBarData(
-                              spots: _buildOperationalHistorySpots(),
-                              isCurved: true,
-                              color: Colors.green.shade600,
-                              barWidth: 3,
-                              isStrokeCapRound: true,
-                              dotData: FlDotData(
-                                show: true,
-                                getDotPainter: (spot, percent, barData, index) {
-                                  return FlDotCirclePainter(
-                                    radius: 4,
-                                    color: Colors.green.shade600,
-                                    strokeWidth: 2,
-                                    strokeColor: Colors.white,
-                                  );
-                                },
-                              ),
-                              belowBarData: BarAreaData(
-                                show: true,
-                                color: Colors.green.shade100.withValues(
-                                  alpha: 0.3,
-                                ),
-                              ),
-                            ),
-                          ],
+                          lineBarsData: _buildAllLineBars(),
                         ),
                       )
                       : const Center(
@@ -720,6 +802,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                       ),
             ),
+            // Leyenda para cuando se muestran todos los equipos
+            if (_selectedSeries.toLowerCase() == 'todos los equipos' &&
+                _liableOperability.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  children: _liableOperability
+                      .map((e) => (e['liable'] ?? '').toString().trim())
+                      .where((name) =>
+                        name.isNotEmpty &&
+                        name.toLowerCase() != 'edla' &&
+                        name.toLowerCase() != 'com' &&
+                        _canViewLiable(name))
+                      .toSet()
+                      .toList()
+                      .asMap()
+                      .entries
+                      .map((entry) {
+                    final index = entry.key;
+                    final name = entry.value;
+                    final color = _getColorForLiable(index);
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            color: color,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          name,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                ),
+              ),
           ],
         ),
       ),
@@ -769,12 +898,219 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final filteredHistory = _getFilteredOperationalHistory();
 
     for (int i = 0; i < filteredHistory.length; i++) {
-      final entry = filteredHistory[i];
-      final operability = (entry['generalOperability'] ?? 0).toDouble();
+      final entry = filteredHistory[filteredHistory.length - 1 - i]; // Invertir el orden
+      double operability;
+      if (_selectedSeries.toLowerCase() == 'general') {
+        operability = _toDoubleSafe(entry['generalOperability']);
+      } else {
+        // Buscar el porcentaje del equipo seleccionado dentro del historial del día
+        final liableList = entry['liableOperability'];
+        operability = 0;
+        if (liableList is List) {
+          final match = liableList.cast<Map>().firstWhere(
+            (m) =>
+                (m['liable']?.toString().toLowerCase() ?? '') ==
+                _selectedSeries.toLowerCase(),
+            orElse: () => {},
+          );
+          if (match.isNotEmpty) {
+            // Preferir 'percentage'; si no está, intentar calcular con online/total
+            if (match['percentage'] != null) {
+              operability = _toDoubleSafe(match['percentage']);
+            } else if (match['onlineCameras'] != null &&
+                match['totalCameras'] != null &&
+                _toDoubleSafe(match['totalCameras']) > 0) {
+              operability =
+                  (_toDoubleSafe(match['onlineCameras']) /
+                      _toDoubleSafe(match['totalCameras'])) *
+                  100.0;
+            }
+          }
+        }
+      }
       spots.add(FlSpot(i.toDouble(), operability));
     }
 
     return spots;
+  }
+
+  // Opciones para la serie a graficar
+  List<String> _getSeriesOptions() {
+    final options = <String>['Todos los equipos', 'General'];
+    if (_liableOperability.isNotEmpty) {
+      final names =
+          _liableOperability
+              .map((e) => (e['liable'] ?? '').toString().trim())
+              .where((name) =>
+                name.isNotEmpty &&
+                name.toLowerCase() != 'edla' &&
+                name.toLowerCase() != 'com' &&
+                _canViewLiable(name))
+              .toSet()
+              .toList()
+            ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+      options.addAll(names);
+    }
+    return options;
+  }
+
+  // Color de la serie actual para el gráfico de líneas
+  Color _currentSeriesColor() {
+    if (_selectedSeries.toLowerCase() == 'general') {
+      return Colors.green.shade600;
+    }
+    return Colors.purple.shade600;
+  }
+
+  // Generar color para un equipo específico basado en su nombre
+  Color _getColorForLiable(int index) {
+    // Obtener el nombre del equipo en la posición del índice
+    final liableNames = _liableOperability
+        .map((e) => (e['liable'] ?? '').toString().trim().toLowerCase())
+        .where((name) =>
+          name.isNotEmpty &&
+          name != 'edla' &&
+          name != 'com' &&
+          _canViewLiable(name))
+        .toSet()
+        .toList()
+      ..sort();
+
+    if (index >= 0 && index < liableNames.length) {
+      final teamName = liableNames[index];
+
+      // Asignar colores específicos por equipo
+      if (teamName == 'eq com 1') return Colors.blue.shade600;
+      if (teamName == 'eq com 2') return Colors.green.shade600;
+      if (teamName == 'zona norte') return Colors.purple.shade600;
+      if (teamName == 'zona sur') return Colors.orange.shade600;
+    }
+
+    // Colores por defecto para otros equipos
+    final defaultColors = [
+      Colors.teal.shade600,
+      Colors.pink.shade600,
+      Colors.indigo.shade600,
+      Colors.amber.shade600,
+      Colors.cyan.shade600,
+      Colors.lime.shade600,
+    ];
+    return defaultColors[index % defaultColors.length];
+  }
+
+  // Construir spots para un equipo específico
+  List<FlSpot> _buildSpotsForLiable(String liableName) {
+    final spots = <FlSpot>[];
+    final filteredHistory = _getFilteredOperationalHistory();
+
+    for (int i = 0; i < filteredHistory.length; i++) {
+      final entry = filteredHistory[filteredHistory.length - 1 - i]; // Invertir el orden
+      final liableList = entry['liableOperability'];
+      double operability = 0;
+
+      if (liableList is List) {
+        final match = liableList.cast<Map>().firstWhere(
+          (m) =>
+              (m['liable']?.toString().toLowerCase() ?? '') ==
+              liableName.toLowerCase(),
+          orElse: () => {},
+        );
+        if (match.isNotEmpty) {
+          if (match['percentage'] != null) {
+            operability = _toDoubleSafe(match['percentage']);
+          } else if (match['onlineCameras'] != null &&
+              match['totalCameras'] != null &&
+              _toDoubleSafe(match['totalCameras']) > 0) {
+            operability =
+                (_toDoubleSafe(match['onlineCameras']) /
+                    _toDoubleSafe(match['totalCameras'])) *
+                100.0;
+          }
+        }
+      }
+      spots.add(FlSpot(i.toDouble(), operability));
+    }
+
+    return spots;
+  }
+
+  // Construir todas las líneas para el gráfico
+  List<LineChartBarData> _buildAllLineBars() {
+    if (_selectedSeries.toLowerCase() == 'todos los equipos') {
+      // Mostrar todas las líneas de equipos
+      final lineBars = <LineChartBarData>[];
+      final liableNames = _liableOperability
+          .map((e) => (e['liable'] ?? '').toString().trim())
+          .where((name) =>
+            name.isNotEmpty &&
+            name.toLowerCase() != 'edla' &&
+            name.toLowerCase() != 'com' &&
+            _canViewLiable(name))
+          .toSet()
+          .toList();
+
+      for (int i = 0; i < liableNames.length; i++) {
+        final liableName = liableNames[i];
+        final color = _getColorForLiable(i);
+        lineBars.add(
+          LineChartBarData(
+            spots: _buildSpotsForLiable(liableName),
+            isCurved: true,
+            color: color,
+            barWidth: 2,
+            isStrokeCapRound: true,
+            dotData: FlDotData(
+              show: true,
+              getDotPainter: (spot, percent, barData, index) {
+                return FlDotCirclePainter(
+                  radius: 3,
+                  color: color,
+                  strokeWidth: 1.5,
+                  strokeColor: Colors.white,
+                );
+              },
+            ),
+            belowBarData: BarAreaData(show: false),
+          ),
+        );
+      }
+      return lineBars;
+    } else {
+      // Mostrar una sola línea
+      return [
+        LineChartBarData(
+          spots: _buildOperationalHistorySpots(),
+          isCurved: true,
+          color: _currentSeriesColor(),
+          barWidth: 3,
+          isStrokeCapRound: true,
+          dotData: FlDotData(
+            show: true,
+            getDotPainter: (spot, percent, barData, index) {
+              return FlDotCirclePainter(
+                radius: 4,
+                color: _currentSeriesColor(),
+                strokeWidth: 2,
+                strokeColor: Colors.white,
+              );
+            },
+          ),
+          belowBarData: BarAreaData(
+            show: true,
+            color: _currentSeriesColor().withValues(
+              alpha: 0.3,
+            ),
+          ),
+        ),
+      ];
+    }
+  }
+
+  double _toDoubleSafe(dynamic value) {
+    if (value == null) return 0;
+    if (value is num) return value.toDouble();
+    final parsed = double.tryParse(value.toString());
+    return parsed ?? 0;
   }
 
   List<Map<String, dynamic>> _getFilteredOperationalHistory() {
@@ -1487,6 +1823,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // Página de operatividad por equipo
   pw.Page _buildLiableOperabilityPage() {
     final sortedLiables = List<Map<String, dynamic>>.from(_liableOperability)
+        .where((liable) {
+          final name = (liable['liable'] ?? '').toString().toLowerCase();
+          return _canViewLiable(name);
+        })
+        .toList()
       ..sort(
         (a, b) => (a['liable'] ?? '').toString().toLowerCase().compareTo(
           (b['liable'] ?? '').toString().toLowerCase(),

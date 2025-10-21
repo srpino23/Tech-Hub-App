@@ -4,16 +4,19 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import '../auth_manager.dart';
 import '../services/analyzer_api_client.dart';
 
 class WebSocketVideoPlayer extends StatefulWidget {
   final Map<String, dynamic> camera;
+  final AuthManager authManager;
   final double width;
   final double height;
 
   const WebSocketVideoPlayer({
     super.key,
     required this.camera,
+    required this.authManager,
     this.width = 300,
     this.height = 200,
   });
@@ -70,7 +73,11 @@ class _WebSocketVideoPlayerState extends State<WebSocketVideoPlayer> {
       _frame = null;
     });
     try {
-      final startRes = await AnalyzerApiClient.startStream(cameraId: cameraId);
+      final startRes = await AnalyzerApiClient.startStream(
+        username: widget.authManager.userName!,
+        password: widget.authManager.password!,
+        cameraId: cameraId,
+      );
       if (!startRes.isSuccess) {
         throw Exception(startRes.message ?? 'No se pudo iniciar el stream');
       }

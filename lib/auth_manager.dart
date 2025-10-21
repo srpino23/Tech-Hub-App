@@ -10,6 +10,7 @@ class AuthManager extends ChangeNotifier {
   String? _userId;
   String? _teamName;
   String? _teamId;
+  String? _password; // Guardamos la contraseña para autenticación en cada petición
   bool _isLoading = false;
 
   bool get isLoggedIn => _isLoggedIn;
@@ -19,6 +20,7 @@ class AuthManager extends ChangeNotifier {
   String? get userId => _userId;
   String? get teamName => _teamName;
   String? get teamId => _teamId;
+  String? get password => _password; // Getter para la contraseña
   bool get isLoading => _isLoading;
 
   static const String _isLoggedInKey = 'is_logged_in';
@@ -28,6 +30,7 @@ class AuthManager extends ChangeNotifier {
   static const String _userIdKey = 'user_id';
   static const String _teamNameKey = 'team_name';
   static const String _teamIdKey = 'team_id';
+  static const String _passwordKey = 'user_password'; // Clave para la contraseña
 
   AuthManager() {
     _loadSavedLoginState();
@@ -43,15 +46,23 @@ class AuthManager extends ChangeNotifier {
       _userId = prefs.getString(_userIdKey);
       _teamName = prefs.getString(_teamNameKey);
       _teamId = prefs.getString(_teamIdKey);
+      _password = prefs.getString(_passwordKey); // Cargar contraseña guardada
       notifyListeners();
     } catch (e) {
       // Error loading saved state, continue with default values
     }
   }
 
-  Future<Map<String, String?>?> _fetchUserTeam(String userId) async {
+  Future<Map<String, String?>?> _fetchUserTeam(
+    String userId,
+    String username,
+    String password,
+  ) async {
     try {
-      final response = await TechHubApiClient.getTeams();
+      final response = await TechHubApiClient.getTeams(
+        username: username,
+        password: password,
+      );
 
       if (response.isSuccess && response.data != null) {
         for (var team in response.data!) {
@@ -109,7 +120,7 @@ class AuthManager extends ChangeNotifier {
         String? teamName;
         String? teamId;
         if (userId.isNotEmpty) {
-          final teamData = await _fetchUserTeam(userId);
+          final teamData = await _fetchUserTeam(userId, name, password);
           if (teamData != null) {
             teamName = teamData['name'];
             teamId = teamData['id'];
@@ -122,6 +133,7 @@ class AuthManager extends ChangeNotifier {
         await prefs.setString(_userSurnameKey, userSurname);
         await prefs.setString(_userFullNameKey, fullName);
         await prefs.setString(_userIdKey, userId);
+        await prefs.setString(_passwordKey, password); // Guardar contraseña
         if (teamName != null) {
           await prefs.setString(_teamNameKey, teamName);
         }
@@ -134,6 +146,7 @@ class AuthManager extends ChangeNotifier {
         _userSurname = userSurname;
         _userFullName = fullName;
         _userId = userId;
+        _password = password; // Guardar en memoria
         _teamName = teamName;
         _teamId = teamId;
         _isLoading = false;
@@ -162,12 +175,14 @@ class AuthManager extends ChangeNotifier {
       await prefs.remove(_userIdKey);
       await prefs.remove(_teamNameKey);
       await prefs.remove(_teamIdKey);
+      await prefs.remove(_passwordKey); // Eliminar contraseña
 
       _isLoggedIn = false;
       _userName = null;
       _userSurname = null;
       _userFullName = null;
       _userId = null;
+      _password = null; // Limpiar contraseña de memoria
       _teamName = null;
       _teamId = null;
       notifyListeners();

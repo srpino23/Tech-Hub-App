@@ -14,10 +14,17 @@ class AnalyzerApiClient {
     'Content-Type': 'application/json',
   };
 
-  static Future<ApiResponse<List<Map<String, dynamic>>>> getCameras() async {
+  static Future<ApiResponse<List<Map<String, dynamic>>>> getCameras({
+    required String username,
+    required String password,
+  }) async {
     try {
       final response = await http
-          .get(Uri.parse('$cameraEndpoint/getCameras'), headers: _jsonHeaders)
+          .post(
+            Uri.parse('$cameraEndpoint/getCameras'),
+            headers: _jsonHeaders,
+            body: json.encode({'username': username, 'password': password}),
+          )
           .timeout(timeoutDuration);
 
       return _handleResponse<List<Map<String, dynamic>>>(
@@ -30,13 +37,16 @@ class AnalyzerApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> getCameraById({
+    required String username,
+    required String password,
     required String cameraId,
   }) async {
     try {
       final response = await http
-          .get(
+          .post(
             Uri.parse('$cameraEndpoint/getCamera/$cameraId'),
             headers: _jsonHeaders,
+            body: json.encode({'username': username, 'password': password}),
           )
           .timeout(timeoutDuration);
 
@@ -54,14 +64,17 @@ class AnalyzerApiClient {
   // =======================
 
   static Future<ApiResponse<Map<String, dynamic>>> addCamera({
+    required String username,
+    required String password,
     required Map<String, dynamic> cameraData,
   }) async {
     try {
+      final body = {'username': username, 'password': password, ...cameraData};
       final response = await http
           .post(
             Uri.parse('$cameraEndpoint/addCamera'),
             headers: _jsonHeaders,
-            body: json.encode(cameraData),
+            body: json.encode(body),
           )
           .timeout(timeoutDuration);
 
@@ -75,15 +88,18 @@ class AnalyzerApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> updateCamera({
+    required String username,
+    required String password,
     required String cameraId,
     required Map<String, dynamic> cameraData,
   }) async {
     try {
+      final body = {'username': username, 'password': password, ...cameraData};
       final response = await http
           .put(
             Uri.parse('$cameraEndpoint/updateCamera/$cameraId'),
             headers: _jsonHeaders,
-            body: json.encode(cameraData),
+            body: json.encode(body),
           )
           .timeout(timeoutDuration);
 
@@ -97,6 +113,8 @@ class AnalyzerApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> deleteCamera({
+    required String username,
+    required String password,
     required String cameraId,
   }) async {
     try {
@@ -104,6 +122,7 @@ class AnalyzerApiClient {
           .delete(
             Uri.parse('$cameraEndpoint/deleteCamera/$cameraId'),
             headers: _jsonHeaders,
+            body: json.encode({'username': username, 'password': password}),
           )
           .timeout(timeoutDuration);
 
@@ -117,6 +136,8 @@ class AnalyzerApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> updateCameraStatus({
+    required String username,
+    required String password,
     required String cameraId,
     required String status,
   }) async {
@@ -125,7 +146,11 @@ class AnalyzerApiClient {
           .put(
             Uri.parse('$cameraEndpoint/updateStatus/$cameraId'),
             headers: _jsonHeaders,
-            body: json.encode({'status': status}),
+            body: json.encode({
+              'username': username,
+              'password': password,
+              'status': status,
+            }),
           )
           .timeout(timeoutDuration);
 
@@ -142,10 +167,17 @@ class AnalyzerApiClient {
   // Endpoints de Servidores
   // =======================
 
-  static Future<ApiResponse<List<Map<String, dynamic>>>> getServers() async {
+  static Future<ApiResponse<List<Map<String, dynamic>>>> getServers({
+    required String username,
+    required String password,
+  }) async {
     try {
       final response = await http
-          .get(Uri.parse('$serverEndpoint/getServers'), headers: _jsonHeaders)
+          .post(
+            Uri.parse('$serverEndpoint/getServers'),
+            headers: _jsonHeaders,
+            body: json.encode({'username': username, 'password': password}),
+          )
           .timeout(timeoutDuration);
 
       return _handleResponse<List<Map<String, dynamic>>>(
@@ -158,13 +190,16 @@ class AnalyzerApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> getServerById({
+    required String username,
+    required String password,
     required String serverId,
   }) async {
     try {
       final response = await http
-          .get(
+          .post(
             Uri.parse('$serverEndpoint/getServer/$serverId'),
             headers: _jsonHeaders,
+            body: json.encode({'username': username, 'password': password}),
           )
           .timeout(timeoutDuration);
 
@@ -178,14 +213,17 @@ class AnalyzerApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> addServer({
+    required String username,
+    required String password,
     required Map<String, dynamic> serverData,
   }) async {
     try {
+      final body = {'username': username, 'password': password, ...serverData};
       final response = await http
           .post(
             Uri.parse('$serverEndpoint/addServer'),
             headers: _jsonHeaders,
-            body: json.encode(serverData),
+            body: json.encode(body),
           )
           .timeout(timeoutDuration);
 
@@ -199,15 +237,18 @@ class AnalyzerApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> updateServer({
+    required String username,
+    required String password,
     required String serverId,
     required Map<String, dynamic> serverData,
   }) async {
     try {
+      final body = {'username': username, 'password': password, ...serverData};
       final response = await http
           .put(
             Uri.parse('$serverEndpoint/updateServer/$serverId'),
             headers: _jsonHeaders,
-            body: json.encode(serverData),
+            body: json.encode(body),
           )
           .timeout(timeoutDuration);
 
@@ -221,6 +262,8 @@ class AnalyzerApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> deleteServer({
+    required String username,
+    required String password,
     required String serverId,
   }) async {
     try {
@@ -228,6 +271,7 @@ class AnalyzerApiClient {
           .delete(
             Uri.parse('$serverEndpoint/deleteServer/$serverId'),
             headers: _jsonHeaders,
+            body: json.encode({'username': username, 'password': password}),
           )
           .timeout(timeoutDuration);
 
@@ -241,6 +285,8 @@ class AnalyzerApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> updateServerStatus({
+    required String username,
+    required String password,
     required String serverId,
     required String status,
   }) async {
@@ -249,7 +295,11 @@ class AnalyzerApiClient {
           .put(
             Uri.parse('$serverEndpoint/updateStatus/$serverId'),
             headers: _jsonHeaders,
-            body: json.encode({'status': status}),
+            body: json.encode({
+              'username': username,
+              'password': password,
+              'status': status,
+            }),
           )
           .timeout(timeoutDuration);
 
@@ -266,13 +316,16 @@ class AnalyzerApiClient {
   // Endpoints de Historial Operativo
   // =======================
 
-  static Future<ApiResponse<List<Map<String, dynamic>>>>
-  getOperationalHistory() async {
+  static Future<ApiResponse<List<Map<String, dynamic>>>> getOperationalHistory({
+    required String username,
+    required String password,
+  }) async {
     try {
       final response = await http
-          .get(
+          .post(
             Uri.parse('$baseUrl/operationalHistory/getOperationalHistory'),
             headers: _jsonHeaders,
+            body: json.encode({'username': username, 'password': password}),
           )
           .timeout(timeoutDuration);
 
@@ -296,6 +349,8 @@ class AnalyzerApiClient {
 
   // Iniciar stream en el servidor antes de conectar por WebSocket
   static Future<ApiResponse<Map<String, dynamic>>> startStream({
+    required String username,
+    required String password,
     required String cameraId,
   }) async {
     try {
@@ -303,6 +358,7 @@ class AnalyzerApiClient {
           .post(
             Uri.parse('$streamBaseUrl/start/$cameraId'),
             headers: _jsonHeaders,
+            body: json.encode({'username': username, 'password': password}),
           )
           .timeout(timeoutDuration);
 

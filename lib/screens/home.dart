@@ -37,6 +37,28 @@ class _HomeScreenState extends State<HomeScreen> {
         default:
           return DashboardScreen(authManager: widget.authManager);
       }
+    } else if (widget.authManager.teamName == 'basic') {
+      // Only allow Map and Profile; other tabs show placeholder
+      switch (_currentIndex) {
+        case 1:
+          return MapScreen(authManager: widget.authManager);
+        case 4:
+          return ProfileScreen(authManager: widget.authManager);
+        default:
+          return _PlaceholderScreen(title: _getTitle());
+      }
+    } else if (widget.authManager.teamName == 'basic2') {
+      // Only allow Dashboard, Map and Profile; other tabs show placeholder
+      switch (_currentIndex) {
+        case 0:
+          return DashboardScreen(authManager: widget.authManager);
+        case 1:
+          return MapScreen(authManager: widget.authManager);
+        case 4:
+          return ProfileScreen(authManager: widget.authManager);
+        default:
+          return _PlaceholderScreen(title: _getTitle());
+      }
     } else {
       switch (_currentIndex) {
         case 0:
@@ -71,6 +93,21 @@ class _HomeScreenState extends State<HomeScreen> {
         default:
           return 'Cámaras';
       }
+    } else if (widget.authManager.teamName == 'basic2') {
+      switch (_currentIndex) {
+        case 0:
+          return 'Dashboard';
+        case 1:
+          return 'Mapa';
+        case 2:
+          return 'Crear Remito';
+        case 3:
+          return 'Trabajos';
+        case 4:
+          return 'Perfil';
+        default:
+          return 'Dashboard';
+      }
     } else {
       switch (_currentIndex) {
         case 0:
@@ -98,6 +135,21 @@ class _HomeScreenState extends State<HomeScreen> {
           return LucideIcons.map;
         case 2:
           return LucideIcons.package;
+        case 3:
+          return LucideIcons.checkSquare;
+        case 4:
+          return LucideIcons.user;
+        default:
+          return LucideIcons.layoutDashboard;
+      }
+    } else if (widget.authManager.teamName == 'basic2') {
+      switch (_currentIndex) {
+        case 0:
+          return LucideIcons.layoutDashboard;
+        case 1:
+          return LucideIcons.map;
+        case 2:
+          return LucideIcons.plus;
         case 3:
           return LucideIcons.checkSquare;
         case 4:
@@ -237,7 +289,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   IconButton(
                     icon: Icon(
-                      widget.authManager.teamName == 'et'
+                      widget.authManager.teamName == 'et' ||
+                              widget.authManager.teamName == 'basic2'
                           ? LucideIcons.layoutDashboard
                           : LucideIcons.video,
                     ),
@@ -289,7 +342,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: Icon(
                     widget.authManager.teamName == 'et'
                         ? LucideIcons.package
-                        : LucideIcons.plus,
+                        : widget.authManager.teamName == 'basic2'
+                            ? LucideIcons.package
+                            : LucideIcons.plus,
                     color: Colors.white,
                     size: 28,
                   ),
@@ -303,45 +358,45 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// class _PlaceholderScreen extends StatelessWidget {
-//   final String title;
+class _PlaceholderScreen extends StatelessWidget {
+  final String title;
 
-//   const _PlaceholderScreen({required this.title});
+  const _PlaceholderScreen({required this.title});
 
-//   @override
-//   Widget build(BuildContext context) {
-//     return Center(
-//       child: Column(
-//         mainAxisAlignment: MainAxisAlignment.center,
-//         children: [
-//           Container(
-//             padding: const EdgeInsets.all(24),
-//             decoration: BoxDecoration(
-//               color: Colors.orange.shade100,
-//               borderRadius: BorderRadius.circular(16),
-//             ),
-//             child: Icon(
-//               LucideIcons.construction,
-//               size: 64,
-//               color: Colors.orange.shade600,
-//             ),
-//           ),
-//           const SizedBox(height: 24),
-//           Text(
-//             title,
-//             style: TextStyle(
-//               fontSize: 24,
-//               fontWeight: FontWeight.bold,
-//               color: Colors.grey.shade800,
-//             ),
-//           ),
-//           const SizedBox(height: 8),
-//           Text(
-//             'Pantalla en desarrollo',
-//             style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
-//           ),
-//         ],
-//       ),
-//     );
-//   }
-// }
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade100,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(
+              LucideIcons.alertCircle,
+              size: 64,
+              color: Colors.orange.shade600,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Nivel de usuario insuficiente',
+            style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+          ),
+        ],
+      ),
+    );
+  }
+}

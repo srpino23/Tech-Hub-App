@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
+import 'package:http_parser/http_parser.dart';
 import 'api_response.dart';
 
 class TechHubApiClient {
@@ -35,10 +36,17 @@ class TechHubApiClient {
     }
   }
 
-  static Future<ApiResponse<List<Map<String, dynamic>>>> getUsers() async {
+  static Future<ApiResponse<List<Map<String, dynamic>>>> getUsers({
+    required String username,
+    required String password,
+  }) async {
     try {
       final response = await http
-          .get(Uri.parse('$baseUrl/user/getUsers'), headers: _jsonHeaders)
+          .post(
+            Uri.parse('$baseUrl/user/getUsers'),
+            headers: _jsonHeaders,
+            body: json.encode({'username': username, 'password': password}),
+          )
           .timeout(timeoutDuration);
 
       return _handleResponse<List<Map<String, dynamic>>>(
@@ -51,6 +59,8 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> updateUserLocation({
+    required String username,
+    required String password,
     required String userId,
     required String location,
   }) async {
@@ -59,7 +69,12 @@ class TechHubApiClient {
           .post(
             Uri.parse('$baseUrl/user/updateUserLocation'),
             headers: _jsonHeaders,
-            body: json.encode({'userId': userId, 'location': location}),
+            body: json.encode({
+              'username': username,
+              'password': password,
+              'userId': userId,
+              'location': location,
+            }),
           )
           .timeout(timeoutDuration);
 
@@ -69,10 +84,17 @@ class TechHubApiClient {
     }
   }
 
-  static Future<ApiResponse<List<Map<String, dynamic>>>> getTeams() async {
+  static Future<ApiResponse<List<Map<String, dynamic>>>> getTeams({
+    required String username,
+    required String password,
+  }) async {
     try {
       final response = await http
-          .get(Uri.parse('$baseUrl/team/getTeams'), headers: _jsonHeaders)
+          .post(
+            Uri.parse('$baseUrl/team/getTeams'),
+            headers: _jsonHeaders,
+            body: json.encode({'username': username, 'password': password}),
+          )
           .timeout(timeoutDuration);
 
       return _handleResponse<List<Map<String, dynamic>>>(
@@ -86,6 +108,8 @@ class TechHubApiClient {
 
   // Task and Report endpoints
   static Future<ApiResponse<Map<String, dynamic>>> getTasksByTeam({
+    required String username,
+    required String password,
     required String teamId,
     required int page,
     required int limit,
@@ -95,7 +119,11 @@ class TechHubApiClient {
           .post(
             Uri.parse('$baseUrl/task/getTasksByTeam?page=$page&limit=$limit'),
             headers: _jsonHeaders,
-            body: json.encode({'teamId': teamId}),
+            body: json.encode({
+              'username': username,
+              'password': password,
+              'teamId': teamId,
+            }),
           )
           .timeout(timeoutDuration);
 
@@ -106,6 +134,8 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> getReportsByTeam({
+    required String username,
+    required String password,
     required String teamId,
     required int page,
     required int limit,
@@ -122,7 +152,11 @@ class TechHubApiClient {
           .post(
             Uri.parse(url),
             headers: _jsonHeaders,
-            body: json.encode({'teamId': teamId}),
+            body: json.encode({
+              'username': username,
+              'password': password,
+              'teamId': teamId,
+            }),
           )
           .timeout(timeoutDuration);
 
@@ -134,14 +168,17 @@ class TechHubApiClient {
 
   // Get ALL tasks (for ET team)
   static Future<ApiResponse<Map<String, dynamic>>> getAllTasks({
+    required String username,
+    required String password,
     required int page,
     required int limit,
   }) async {
     try {
       final response = await http
-          .get(
+          .post(
             Uri.parse('$baseUrl/task/getTasks?page=$page&limit=$limit'),
             headers: _jsonHeaders,
+            body: json.encode({'username': username, 'password': password}),
           )
           .timeout(timeoutDuration);
 
@@ -153,14 +190,17 @@ class TechHubApiClient {
 
   // Get ALL reports (for ET team)
   static Future<ApiResponse<Map<String, dynamic>>> getAllReports({
+    required String username,
+    required String password,
     required int page,
     required int limit,
   }) async {
     try {
       final response = await http
-          .get(
+          .post(
             Uri.parse('$baseUrl/report/getReports?page=$page&limit=$limit'),
             headers: _jsonHeaders,
+            body: json.encode({'username': username, 'password': password}),
           )
           .timeout(timeoutDuration);
 
@@ -172,6 +212,8 @@ class TechHubApiClient {
 
   // Delete report
   static Future<ApiResponse<Map<String, dynamic>>> deleteReport({
+    required String username,
+    required String password,
     required String reportId,
   }) async {
     try {
@@ -179,7 +221,11 @@ class TechHubApiClient {
           .post(
             Uri.parse('$baseUrl/report/deleteReport'),
             headers: _jsonHeaders,
-            body: json.encode({'reportId': reportId}),
+            body: json.encode({
+              'username': username,
+              'password': password,
+              'reportId': reportId,
+            }),
           )
           .timeout(timeoutDuration);
 
@@ -189,12 +235,16 @@ class TechHubApiClient {
     }
   }
 
-  static Future<ApiResponse<List<Map<String, dynamic>>>> getInventory() async {
+  static Future<ApiResponse<List<Map<String, dynamic>>>> getInventory({
+    required String username,
+    required String password,
+  }) async {
     try {
       final response = await http
-          .get(
+          .post(
             Uri.parse('$baseUrl/inventory/getInventory'),
             headers: _jsonHeaders,
+            body: json.encode({'username': username, 'password': password}),
           )
           .timeout(timeoutDuration);
 
@@ -208,6 +258,8 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<List<Map<String, dynamic>>>> getRecoveredInventory({
+    required String username,
+    required String password,
     String? status,
   }) async {
     try {
@@ -217,7 +269,11 @@ class TechHubApiClient {
       }
 
       final response = await http
-          .get(Uri.parse(url), headers: _jsonHeaders)
+          .post(
+            Uri.parse(url),
+            headers: _jsonHeaders,
+            body: json.encode({'username': username, 'password': password}),
+          )
           .timeout(timeoutDuration);
 
       return _handleResponse<List<Map<String, dynamic>>>(
@@ -231,6 +287,8 @@ class TechHubApiClient {
 
   // Main Inventory endpoints
   static Future<ApiResponse<Map<String, dynamic>>> createMaterial({
+    required String username,
+    required String password,
     required String name,
     required int quantity,
   }) async {
@@ -239,7 +297,12 @@ class TechHubApiClient {
           .post(
             Uri.parse('$baseUrl/inventory/createMaterial'),
             headers: _jsonHeaders,
-            body: json.encode({'name': name, 'quantity': quantity}),
+            body: json.encode({
+              'username': username,
+              'password': password,
+              'name': name,
+              'quantity': quantity,
+            }),
           )
           .timeout(timeoutDuration);
 
@@ -250,6 +313,8 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> editMaterial({
+    required String username,
+    required String password,
     required String id,
     required String name,
     required int quantity,
@@ -259,7 +324,13 @@ class TechHubApiClient {
           .post(
             Uri.parse('$baseUrl/inventory/editMaterial'),
             headers: _jsonHeaders,
-            body: json.encode({'id': id, 'name': name, 'quantity': quantity}),
+            body: json.encode({
+              'username': username,
+              'password': password,
+              'id': id,
+              'name': name,
+              'quantity': quantity,
+            }),
           )
           .timeout(timeoutDuration);
 
@@ -270,6 +341,8 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> deleteMaterial({
+    required String username,
+    required String password,
     required String id,
   }) async {
     try {
@@ -277,7 +350,11 @@ class TechHubApiClient {
           .post(
             Uri.parse('$baseUrl/inventory/deleteMaterial'),
             headers: _jsonHeaders,
-            body: json.encode({'id': id}),
+            body: json.encode({
+              'username': username,
+              'password': password,
+              'id': id,
+            }),
           )
           .timeout(timeoutDuration);
 
@@ -288,6 +365,8 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> addToInventory({
+    required String username,
+    required String password,
     required String change,
     required String materialId,
     required int quantity,
@@ -299,6 +378,8 @@ class TechHubApiClient {
             Uri.parse('$baseUrl/inventory/addToInventory'),
             headers: _jsonHeaders,
             body: json.encode({
+              'username': username,
+              'password': password,
               'change': change,
               'materialId': materialId,
               'quantity': quantity,
@@ -314,6 +395,8 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> removeFromInventory({
+    required String username,
+    required String password,
     required String change,
     required String materialId,
     required int quantity,
@@ -324,6 +407,8 @@ class TechHubApiClient {
             Uri.parse('$baseUrl/inventory/removeFromInventory'),
             headers: _jsonHeaders,
             body: json.encode({
+              'username': username,
+              'password': password,
               'change': change,
               'materialId': materialId,
               'quantity': quantity,
@@ -338,6 +423,8 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> moveToAnotherInventory({
+    required String username,
+    required String password,
     required String change,
     required String materialId,
     required int quantity,
@@ -349,6 +436,8 @@ class TechHubApiClient {
             Uri.parse('$baseUrl/inventory/moveToAnotherInventory'),
             headers: _jsonHeaders,
             body: json.encode({
+              'username': username,
+              'password': password,
               'change': change,
               'materialId': materialId,
               'quantity': quantity,
@@ -364,6 +453,8 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> returnToInventory({
+    required String username,
+    required String password,
     required String change,
     required String materialId,
     required int quantity,
@@ -375,6 +466,8 @@ class TechHubApiClient {
             Uri.parse('$baseUrl/inventory/returnToInventory'),
             headers: _jsonHeaders,
             body: json.encode({
+              'username': username,
+              'password': password,
               'change': change,
               'materialId': materialId,
               'quantity': quantity,
@@ -391,6 +484,8 @@ class TechHubApiClient {
 
   static Future<ApiResponse<Map<String, dynamic>>>
   returnReconditionedToRecovered({
+    required String username,
+    required String password,
     required String change,
     required String materialId,
     required int quantity,
@@ -402,6 +497,8 @@ class TechHubApiClient {
             Uri.parse('$baseUrl/inventory/returnReconditionedToRecovered'),
             headers: _jsonHeaders,
             body: json.encode({
+              'username': username,
+              'password': password,
               'change': change,
               'materialId': materialId,
               'quantity': quantity,
@@ -417,6 +514,8 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<List<Map<String, dynamic>>>> getInventoryTeam({
+    required String username,
+    required String password,
     required String teamId,
   }) async {
     try {
@@ -424,7 +523,11 @@ class TechHubApiClient {
           .post(
             Uri.parse('$baseUrl/inventory/getInventoryTeam'),
             headers: _jsonHeaders,
-            body: json.encode({'teamId': teamId}),
+            body: json.encode({
+              'username': username,
+              'password': password,
+              'teamId': teamId,
+            }),
           )
           .timeout(timeoutDuration);
 
@@ -439,12 +542,19 @@ class TechHubApiClient {
 
   // Recovered Inventory endpoints
   static Future<ApiResponse<Map<String, dynamic>>> createRecoveredMaterial({
+    required String username,
+    required String password,
     required String name,
     required int quantity,
     String? originalMaterialId,
   }) async {
     try {
-      final body = <String, dynamic>{'name': name, 'quantity': quantity};
+      final body = <String, dynamic>{
+        'username': username,
+        'password': password,
+        'name': name,
+        'quantity': quantity,
+      };
       if (originalMaterialId != null) {
         body['originalMaterialId'] = originalMaterialId;
       }
@@ -464,12 +574,18 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> editRecoveredMaterial({
+    required String username,
+    required String password,
     required String id,
     String? name,
     int? quantity,
   }) async {
     try {
-      final body = <String, dynamic>{'id': id};
+      final body = <String, dynamic>{
+        'username': username,
+        'password': password,
+        'id': id,
+      };
       if (name != null) body['name'] = name;
       if (quantity != null) body['quantity'] = quantity;
 
@@ -488,6 +604,8 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> deleteRecoveredMaterial({
+    required String username,
+    required String password,
     required String id,
   }) async {
     try {
@@ -495,7 +613,11 @@ class TechHubApiClient {
           .post(
             Uri.parse('$baseUrl/recoveredInventory/deleteRecoveredMaterial'),
             headers: _jsonHeaders,
-            body: json.encode({'id': id}),
+            body: json.encode({
+              'username': username,
+              'password': password,
+              'id': id,
+            }),
           )
           .timeout(timeoutDuration);
 
@@ -506,6 +628,8 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> deleteAddition({
+    required String username,
+    required String password,
     required String materialId,
     required String additionId,
   }) async {
@@ -515,6 +639,8 @@ class TechHubApiClient {
             Uri.parse('$baseUrl/recoveredInventory/deleteAddition'),
             headers: _jsonHeaders,
             body: json.encode({
+              'username': username,
+              'password': password,
               'materialId': materialId,
               'additionId': additionId,
             }),
@@ -528,6 +654,8 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> updateAdditionStatus({
+    required String username,
+    required String password,
     required String materialId,
     required String additionId,
     required String status,
@@ -536,6 +664,8 @@ class TechHubApiClient {
   }) async {
     try {
       final body = <String, dynamic>{
+        'username': username,
+        'password': password,
         'materialId': materialId,
         'additionId': additionId,
         'status': status,
@@ -558,6 +688,8 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> transferToTeam({
+    required String username,
+    required String password,
     required String materialId,
     required String additionId,
     required int quantity,
@@ -570,6 +702,8 @@ class TechHubApiClient {
             Uri.parse('$baseUrl/recoveredInventory/transferToTeam'),
             headers: _jsonHeaders,
             body: json.encode({
+              'username': username,
+              'password': password,
               'materialId': materialId,
               'additionId': additionId,
               'quantity': quantity,
@@ -586,13 +720,16 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> getRecoveredMaterialById({
+    required String username,
+    required String password,
     required String id,
   }) async {
     try {
       final response = await http
-          .get(
+          .post(
             Uri.parse('$baseUrl/recoveredInventory/getRecoveredMaterial/$id'),
             headers: _jsonHeaders,
+            body: json.encode({'username': username, 'password': password}),
           )
           .timeout(timeoutDuration);
 
@@ -603,16 +740,19 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> getTeamMaterialDetails({
+    required String username,
+    required String password,
     required String teamId,
     required String materialName,
   }) async {
     try {
       final response = await http
-          .get(
+          .post(
             Uri.parse(
               '$baseUrl/recoveredInventory/getTeamMaterialDetails/$teamId/$materialName',
             ),
             headers: _jsonHeaders,
+            body: json.encode({'username': username, 'password': password}),
           )
           .timeout(timeoutDuration);
 
@@ -624,6 +764,8 @@ class TechHubApiClient {
 
   // Team endpoints
   static Future<ApiResponse<Map<String, dynamic>>> createTeam({
+    required String username,
+    required String password,
     required String name,
   }) async {
     try {
@@ -631,7 +773,11 @@ class TechHubApiClient {
           .post(
             Uri.parse('$baseUrl/team/createTeam'),
             headers: _jsonHeaders,
-            body: json.encode({'name': name}),
+            body: json.encode({
+              'username': username,
+              'password': password,
+              'name': name,
+            }),
           )
           .timeout(timeoutDuration);
 
@@ -642,6 +788,8 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> editTeam({
+    required String username,
+    required String password,
     required String id,
     required String name,
   }) async {
@@ -650,7 +798,12 @@ class TechHubApiClient {
           .post(
             Uri.parse('$baseUrl/team/editTeam'),
             headers: _jsonHeaders,
-            body: json.encode({'id': id, 'name': name}),
+            body: json.encode({
+              'username': username,
+              'password': password,
+              'id': id,
+              'name': name,
+            }),
           )
           .timeout(timeoutDuration);
 
@@ -661,6 +814,8 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> deleteTeam({
+    required String username,
+    required String password,
     required String id,
   }) async {
     try {
@@ -668,7 +823,11 @@ class TechHubApiClient {
           .post(
             Uri.parse('$baseUrl/team/deleteTeam'),
             headers: _jsonHeaders,
-            body: json.encode({'id': id}),
+            body: json.encode({
+              'username': username,
+              'password': password,
+              'id': id,
+            }),
           )
           .timeout(timeoutDuration);
 
@@ -679,6 +838,8 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> addToTeam({
+    required String username,
+    required String password,
     required String teamId,
     required String userId,
   }) async {
@@ -687,7 +848,12 @@ class TechHubApiClient {
           .post(
             Uri.parse('$baseUrl/team/addToTeam'),
             headers: _jsonHeaders,
-            body: json.encode({'teamId': teamId, 'userId': userId}),
+            body: json.encode({
+              'username': username,
+              'password': password,
+              'teamId': teamId,
+              'userId': userId,
+            }),
           )
           .timeout(timeoutDuration);
 
@@ -698,6 +864,8 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> removeFromTeam({
+    required String username,
+    required String password,
     required String teamId,
     required String userId,
   }) async {
@@ -706,7 +874,12 @@ class TechHubApiClient {
           .post(
             Uri.parse('$baseUrl/team/removeFromTeam'),
             headers: _jsonHeaders,
-            body: json.encode({'teamId': teamId, 'userId': userId}),
+            body: json.encode({
+              'username': username,
+              'password': password,
+              'teamId': teamId,
+              'userId': userId,
+            }),
           )
           .timeout(timeoutDuration);
 
@@ -717,6 +890,8 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> moveToAnotherTeam({
+    required String username,
+    required String password,
     required String teamId,
     required String userId,
     required String newTeamId,
@@ -727,6 +902,8 @@ class TechHubApiClient {
             Uri.parse('$baseUrl/team/moveToAnotherTeam'),
             headers: _jsonHeaders,
             body: json.encode({
+              'username': username,
+              'password': password,
               'teamId': teamId,
               'userId': userId,
               'newTeamId': newTeamId,
@@ -741,12 +918,18 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<List<Map<String, dynamic>>>> getInventoryByTeam({
+    required String username,
+    required String password,
     required String teamId,
   }) async {
     try {
       // Get all teams and find the specific team by ID
       final response = await http
-          .get(Uri.parse('$baseUrl/team/getTeams'), headers: _jsonHeaders)
+          .post(
+            Uri.parse('$baseUrl/team/getTeams'),
+            headers: _jsonHeaders,
+            body: json.encode({'username': username, 'password': password}),
+          )
           .timeout(timeoutDuration);
 
       final result = _handleResponse<List<dynamic>>(
@@ -781,6 +964,8 @@ class TechHubApiClient {
 
   // Report endpoints
   static Future<ApiResponse<ReportResponse>> createReport({
+    required String username,
+    required String password,
     required String userId,
     required String startTime,
   }) async {
@@ -789,7 +974,12 @@ class TechHubApiClient {
           .post(
             Uri.parse('$baseUrl/report/createReport'),
             headers: _jsonHeaders,
-            body: json.encode({'userId': userId, 'startTime': startTime}),
+            body: json.encode({
+              'username': username,
+              'password': password,
+              'userId': userId,
+              'startTime': startTime,
+            }),
           )
           .timeout(timeoutDuration);
 
@@ -803,6 +993,8 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<ReportResponse>> updateReport({
+    required String username,
+    required String password,
     required String reportId,
     String? status,
     String? teamId,
@@ -821,7 +1013,11 @@ class TechHubApiClient {
     String? ccq,
   }) async {
     try {
-      final body = <String, dynamic>{'reportId': reportId};
+      final body = <String, dynamic>{
+        'username': username,
+        'password': password,
+        'reportId': reportId,
+      };
 
       if (status != null) body['status'] = status;
       if (teamId != null) body['teamId'] = teamId;
@@ -857,6 +1053,8 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<ReportResponse>> finishReport({
+    required String username,
+    required String password,
     required String reportId,
     required String status,
     required String teamId,
@@ -884,27 +1082,41 @@ class TechHubApiClient {
             Uri.parse('$baseUrl/report/finishReport'),
           );
 
-          // Add form fields
-          request.fields['reportId'] = reportId;
-          request.fields['status'] = status;
-          request.fields['teamId'] = teamId;
+          // Construir body como mapa para reuso
+          final body = <String, String>{
+            'username': username,
+            'password': password,
+            'reportId': reportId,
+            'status': status,
+            'teamId': teamId,
+          };
 
-          if (supplies != null) request.fields['supplies'] = supplies;
-          if (toDo != null) request.fields['toDo'] = toDo;
-          if (typeOfWork != null) request.fields['typeOfWork'] = typeOfWork;
-          if (endTime != null) request.fields['endTime'] = endTime;
-          if (location != null) request.fields['location'] = location;
-          if (connectivity != null) {
-            request.fields['connectivity'] = connectivity;
-          }
-          if (cameraName != null) request.fields['cameraName'] = cameraName;
-          if (db != null) request.fields['db'] = db;
-          if (buffers != null) request.fields['buffers'] = buffers;
-          if (bufferColor != null) request.fields['bufferColor'] = bufferColor;
-          if (hairColor != null) request.fields['hairColor'] = hairColor;
-          if (ap != null) request.fields['ap'] = ap;
-          if (st != null) request.fields['st'] = st;
-          if (ccq != null) request.fields['ccq'] = ccq;
+          if (supplies != null) body['supplies'] = supplies;
+          if (toDo != null) body['toDo'] = toDo;
+          if (typeOfWork != null) body['typeOfWork'] = typeOfWork;
+          if (endTime != null) body['endTime'] = endTime;
+          if (location != null) body['location'] = location;
+          if (connectivity != null) body['connectivity'] = connectivity;
+          if (cameraName != null) body['cameraName'] = cameraName;
+          if (db != null) body['db'] = db;
+          if (buffers != null) body['buffers'] = buffers;
+          if (bufferColor != null) body['bufferColor'] = bufferColor;
+          if (hairColor != null) body['hairColor'] = hairColor;
+          if (ap != null) body['ap'] = ap;
+          if (st != null) body['st'] = st;
+          if (ccq != null) body['ccq'] = ccq;
+
+          // Asegurar que los campos estén añadidos (form-data)
+          request.fields.addAll(body);
+
+          // Respaldo robusto: añadir una parte JSON con content-type application/json
+          // Muchos servidores que esperan JSON leerán esta parte llamada 'body'
+          final jsonPart = http.MultipartFile.fromString(
+            'body',
+            json.encode(body),
+            contentType: MediaType('application', 'json'),
+          );
+          request.files.add(jsonPart);
 
           // Add images if provided
           if (images != null) {
@@ -940,6 +1152,15 @@ class TechHubApiClient {
                     filename: platformFile.name,
                   );
                   request.files.add(file);
+                } else if (platformFile.path != null &&
+                    platformFile.path!.isNotEmpty) {
+                  // Fallback: si PlatformFile tiene path pero no bytes, usar fromPath
+                  final file = await http.MultipartFile.fromPath(
+                    'images',
+                    platformFile.path!,
+                    filename: platformFile.name,
+                  );
+                  request.files.add(file);
                 }
               }
             }
@@ -965,6 +1186,8 @@ class TechHubApiClient {
   }
 
   static Future<ApiResponse<ReportResponse>> getReportById({
+    required String username,
+    required String password,
     required String reportId,
   }) async {
     try {
@@ -972,7 +1195,11 @@ class TechHubApiClient {
           .post(
             Uri.parse('$baseUrl/report/getReportById'),
             headers: _jsonHeaders,
-            body: json.encode({'reportId': reportId}),
+            body: json.encode({
+              'username': username,
+              'password': password,
+              'reportId': reportId,
+            }),
           )
           .timeout(timeoutDuration);
 

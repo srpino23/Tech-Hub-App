@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../services/analyzer_api_client.dart';
+import '../auth_manager.dart';
 
 class CameraCrudPopup extends StatefulWidget {
-  const CameraCrudPopup({super.key});
+  final AuthManager authManager;
+
+  const CameraCrudPopup({super.key, required this.authManager});
 
   @override
   State<CameraCrudPopup> createState() => _CameraCrudPopupState();
@@ -67,7 +70,10 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
 
   Future<void> _loadCameras() async {
     try {
-      final response = await AnalyzerApiClient.getCameras();
+      final response = await AnalyzerApiClient.getCameras(
+        username: widget.authManager.userName!,
+        password: widget.authManager.password!,
+      );
       if (mounted) {
         if (response.isSuccess && response.data != null) {
           setState(() {
@@ -93,7 +99,10 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
 
   Future<void> _loadServers() async {
     try {
-      final response = await AnalyzerApiClient.getServers();
+      final response = await AnalyzerApiClient.getServers(
+        username: widget.authManager.userName!,
+        password: widget.authManager.password!,
+      );
       if (mounted) {
         if (response.isSuccess && response.data != null) {
           setState(() {
@@ -828,6 +837,10 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
 
                                         final response =
                                             await AnalyzerApiClient.addCamera(
+                                              username:
+                                                  widget.authManager.userName!,
+                                              password:
+                                                  widget.authManager.password!,
                                               cameraData: cameraData,
                                             );
 
@@ -1053,6 +1066,10 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
 
                                         final response =
                                             await AnalyzerApiClient.addServer(
+                                              username:
+                                                  widget.authManager.userName!,
+                                              password:
+                                                  widget.authManager.password!,
                                               serverData: serverData,
                                             );
 
@@ -1660,7 +1677,9 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                                               final cameraData = {
                                                 'name': nameController.text,
                                                 'type': mappedType,
-                                                'brand': selectedBrand?.toLowerCase(),
+                                                'brand':
+                                                    selectedBrand
+                                                        ?.toLowerCase(),
                                                 'direction':
                                                     directionController.text,
                                                 'zone': _normalizeString(
@@ -1688,6 +1707,14 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
 
                                               final response =
                                                   await AnalyzerApiClient.updateCamera(
+                                                    username:
+                                                        widget
+                                                            .authManager
+                                                            .userName!,
+                                                    password:
+                                                        widget
+                                                            .authManager
+                                                            .password!,
                                                     cameraId:
                                                         camera['_id'] as String,
                                                     cameraData: cameraData,
@@ -1965,6 +1992,14 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
 
                                               final response =
                                                   await AnalyzerApiClient.updateServer(
+                                                    username:
+                                                        widget
+                                                            .authManager
+                                                            .userName!,
+                                                    password:
+                                                        widget
+                                                            .authManager
+                                                            .password!,
                                                     serverId:
                                                         server['_id'] as String,
                                                     serverData: serverData,
@@ -2797,9 +2832,13 @@ class _CameraCrudPopupState extends State<CameraCrudPopup> {
                     final response =
                         _showCameras
                             ? await AnalyzerApiClient.deleteCamera(
+                              username: widget.authManager.userName!,
+                              password: widget.authManager.password!,
                               cameraId: item['_id'] as String,
                             )
                             : await AnalyzerApiClient.deleteServer(
+                              username: widget.authManager.userName!,
+                              password: widget.authManager.password!,
                               serverId: item['_id'] as String,
                             );
 

@@ -374,6 +374,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       // Cargar materiales del equipo usando la nueva API
       final teamInventoryResponse = await TechHubApiClient.getInventoryByTeam(
         teamId: teamId,
+        username: widget.authManager.userName!,
+        password: widget.authManager.password!,
       );
 
       if (!teamInventoryResponse.isSuccess) {
@@ -434,7 +436,10 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     });
 
     try {
-      final response = await AnalyzerApiClient.getCameras();
+      final response = await AnalyzerApiClient.getCameras(
+        username: widget.authManager.userName!,
+        password: widget.authManager.password!,
+      );
 
       if (response.isSuccess && response.data != null) {
         final allCameras = response.data!;
@@ -1008,6 +1013,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                 ? _ccqController.text
                 : null,
         images: _convertUniversalImagesToFiles(),
+        username: widget.authManager.userName!,
+        password: widget.authManager.password!,
       );
 
       if (!finishResponse.isSuccess) {
@@ -1072,6 +1079,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
 
       final response = await TechHubApiClient.getReportById(
         reportId: _currentReportId!,
+        username: widget.authManager.userName!,
+        password: widget.authManager.password!,
       );
 
       if (response.isSuccess && response.data != null) {
@@ -1178,6 +1187,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       final response = await TechHubApiClient.createReport(
         userId: userId,
         startTime: DateTime.now().toIso8601String(),
+        username: widget.authManager.userName!,
+        password: widget.authManager.password!,
       );
 
       if (response.isSuccess && response.data?.id != null) {
@@ -1282,6 +1293,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
             _connectivity == 'Enlace' && _ccqController.text.isNotEmpty
                 ? _ccqController.text
                 : null,
+        username: widget.authManager.userName!,
+        password: widget.authManager.password!,
       );
     } catch (e) {
       // Silenciar errores de autoguardado para no molestar al usuario
@@ -1386,6 +1399,159 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
 
     // Obtener nueva ubicación
     _getCurrentLocation();
+  }
+
+  void _showQuantityInputDialog({
+    required String materialId,
+    required String materialName,
+    required int currentQuantity,
+    required int maxQuantity,
+  }) {
+    final TextEditingController quantityController = TextEditingController(
+      text: currentQuantity > 0 ? currentQuantity.toString() : '',
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Cantidad de material',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey[800],
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              materialName,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey[700],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Disponible: $maxQuantity',
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.grey[600],
+              ),
+            ),
+            const SizedBox(height: 20),
+            TextField(
+              controller: quantityController,
+              keyboardType: TextInputType.number,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: 'Cantidad a usar *',
+                hintText: 'Ingrese la cantidad',
+                labelStyle: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(
+                    color: Color(0xFF1E293B),
+                    width: 2,
+                  ),
+                ),
+                filled: true,
+                fillColor: Colors.grey[50],
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 16,
+                ),
+              ),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[800],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(
+              'Cancelar',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final inputText = quantityController.text.trim();
+              if (inputText.isEmpty) {
+                // Si está vacío, establecer en 0 y eliminar del mapa
+                setState(() {
+                  _materialQuantities.remove(materialId);
+                });
+                _onFormChanged();
+                Navigator.of(context).pop();
+                return;
+              }
+
+              final quantity = int.tryParse(inputText);
+              if (quantity == null) {
+                _showError('Por favor ingrese un número válido');
+                return;
+              }
+
+              if (quantity < 0) {
+                _showError('La cantidad no puede ser negativa');
+                return;
+              }
+
+              if (quantity > maxQuantity) {
+                _showError(
+                  'La cantidad no puede exceder el stock disponible ($maxQuantity)',
+                );
+                return;
+              }
+
+              setState(() {
+                if (quantity == 0) {
+                  _materialQuantities.remove(materialId);
+                } else {
+                  _materialQuantities[materialId] = quantity;
+                }
+              });
+              _onFormChanged();
+              Navigator.of(context).pop();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1E293B),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 12,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text(
+              'Confirmar',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildInputField({
@@ -2941,25 +3107,35 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                                             ),
                                           ),
                                         ),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 16,
-                                            vertical: 8,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.white,
-                                            border: Border.symmetric(
-                                              vertical: BorderSide(
-                                                color: Colors.grey[300]!,
+                                        GestureDetector(
+                                          onTap: () {
+                                            _showQuantityInputDialog(
+                                              materialId: materialId,
+                                              materialName: material['materialName'] ?? 'Material',
+                                              currentQuantity: selectedQuantity,
+                                              maxQuantity: availableQuantity,
+                                            );
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                              vertical: 8,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              border: Border.symmetric(
+                                                vertical: BorderSide(
+                                                  color: Colors.grey[300]!,
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                          child: Text(
-                                            selectedQuantity.toString(),
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w600,
-                                              color: Colors.grey[800],
+                                            child: Text(
+                                              selectedQuantity.toString(),
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.grey[800],
+                                              ),
                                             ),
                                           ),
                                         ),

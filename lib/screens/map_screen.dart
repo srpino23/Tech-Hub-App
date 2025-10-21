@@ -124,7 +124,10 @@ class _MapScreenState extends State<MapScreen> {
 
   Future<void> _loadCameras() async {
     try {
-      final response = await AnalyzerApiClient.getCameras();
+      final response = await AnalyzerApiClient.getCameras(
+        username: widget.authManager.userName!,
+        password: widget.authManager.password!,
+      );
 
       if (mounted) {
         if (response.isSuccess && response.data != null) {
@@ -157,7 +160,10 @@ class _MapScreenState extends State<MapScreen> {
 
   Future<void> _loadUsers() async {
     try {
-      final response = await TechHubApiClient.getUsers();
+      final response = await TechHubApiClient.getUsers(
+        username: widget.authManager.userName!,
+        password: widget.authManager.password!,
+      );
 
       if (mounted) {
         if (response.isSuccess && response.data != null) {
@@ -336,9 +342,16 @@ class _MapScreenState extends State<MapScreen> {
 
   Map<String, Map<String, dynamic>> _calculateZoneStats() {
     final zoneStats = <String, Map<String, dynamic>>{};
+    final isBasic2Team = widget.authManager.teamName?.toLowerCase() == 'basic2';
 
     for (final camera in _cameras) {
       final zone = (camera['zone'] as String?)?.toLowerCase() ?? 'sin zona';
+
+      // Filtrar zonas para basic2
+      if (isBasic2Team && zone != 'zona norte' && zone != 'zona sur') {
+        continue;
+      }
+
       final status = (camera['status'] as String?)?.toLowerCase() ?? 'offline';
       final lat = camera['latitude'] as double?;
       final lng = camera['longitude'] as double?;
@@ -1198,12 +1211,23 @@ class _MapScreenState extends State<MapScreen> {
     if (!_showCameras || _cameras.isEmpty) return [];
 
     final isEtTeam = widget.authManager.teamName?.toLowerCase() == 'et';
+    final isBasicTeam = widget.authManager.teamName?.toLowerCase() == 'basic';
+    final isBasic2Team = widget.authManager.teamName?.toLowerCase() == 'basic2';
 
     List<Map<String, dynamic>> camerasToShow;
 
-    if (_showAllCameras) {
+    // Basic2 SIEMPRE solo ve cámaras offline de zona norte y zona sur
+    if (isBasic2Team) {
+      camerasToShow =
+          _cameras.where((camera) {
+            final liable = camera['liable']?.toString().toLowerCase() ?? '';
+            final status = camera['status'] as String?;
+            return (liable == 'zona norte' || liable == 'zona sur') &&
+                status?.toLowerCase() == 'offline';
+          }).toList();
+    } else if (_showAllCameras) {
       // Si está seleccionado "Todas", mostrar todas las cámaras pero solo de la zona del equipo
-      if (isEtTeam) {
+      if (isEtTeam || isBasicTeam) {
         // ET team: mostrar todas las cámaras
         camerasToShow = _cameras;
       } else {
@@ -1219,7 +1243,7 @@ class _MapScreenState extends State<MapScreen> {
       }
     } else {
       // Si no está seleccionado "Todas"
-      if (isEtTeam) {
+      if (isEtTeam || isBasicTeam) {
         // ET team: mostrar todas las cámaras offline
         camerasToShow =
             _cameras.where((camera) {
@@ -1793,33 +1817,65 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Widget _buildCameraActionsSection(Map<String, dynamic> camera) {
+    // Verificar si el usuario tiene permisos para ver la transmisión
+    // basic2 NO tiene permiso para ver transmisión
+    final teamName = widget.authManager.teamName?.toLowerCase() ?? '';
+    final hasPermission =
+        teamName == 'et' || teamName == 'eq com 1' || teamName == 'eq com 2';
+
     return _buildMapInfoSection(
       'Acciones de la Cámara',
       LucideIcons.settings,
       Colors.indigo,
       [
-        Row(
-          children: [
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  _showVideoStream(camera);
-                },
-                icon: const Icon(LucideIcons.play),
-                label: const Text('Ver Transmisión'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.indigo.shade600,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+        if (hasPermission)
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    _showVideoStream(camera);
+                  },
+                  icon: const Icon(LucideIcons.play),
+                  label: const Text('Ver Transmisión'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.indigo.shade600,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                 ),
               ),
+            ],
+          )
+        else
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange.shade200),
             ),
-          ],
-        ),
+            child: Row(
+              children: [
+                Icon(LucideIcons.lock, color: Colors.orange.shade600, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'No tienes permisos para ver la transmisión de esta cámara',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.orange.shade800,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }
@@ -1873,6 +1929,7 @@ class _MapScreenState extends State<MapScreen> {
 
   Widget _buildControlPanel() {
     final isEtTeam = widget.authManager.teamName?.toLowerCase() == 'et';
+    final isBasic2Team = widget.authManager.teamName?.toLowerCase() == 'basic2';
 
     return Positioned(
       right: 16,
@@ -1902,13 +1959,15 @@ class _MapScreenState extends State<MapScreen> {
             onPressed: () => setState(() => _showCameras = !_showCameras),
             activeColor: Colors.green,
           ),
-          _buildControlButton(
-            icon: LucideIcons.eye,
-            label: 'Todas',
-            isActive: _showAllCameras,
-            onPressed: () => setState(() => _showAllCameras = !_showAllCameras),
-            activeColor: Colors.purple,
-          ),
+          // Ocultar botón "Todas" para basic2 - solo verán cámaras offline
+          if (!isBasic2Team)
+            _buildControlButton(
+              icon: LucideIcons.eye,
+              label: 'Todas',
+              isActive: _showAllCameras,
+              onPressed: () => setState(() => _showAllCameras = !_showAllCameras),
+              activeColor: Colors.purple,
+            ),
           if (isEtTeam) ...[
             _buildControlButton(
               icon: LucideIcons.barChart3,
@@ -1991,7 +2050,10 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   void _openCameraCrud() {
-    showDialog(context: context, builder: (context) => const CameraCrudPopup());
+    showDialog(
+      context: context,
+      builder: (context) => CameraCrudPopup(authManager: widget.authManager),
+    );
   }
 
   void _showVideoStream(Map<String, dynamic> camera) {
@@ -2001,6 +2063,7 @@ class _MapScreenState extends State<MapScreen> {
       builder:
           (context) => WebSocketVideoPlayer(
             camera: camera,
+            authManager: widget.authManager,
             width: double.infinity,
             height: 300,
           ),

@@ -136,6 +136,8 @@ class _WorksScreenState extends State<WorksScreen> {
 
       if (isET) {
         response = await TechHubApiClient.getAllTasks(
+          username: widget.authManager.userName!,
+          password: widget.authManager.password!,
           page: 1,
           limit: _initialLoadSize,
         );
@@ -146,6 +148,8 @@ class _WorksScreenState extends State<WorksScreen> {
         }
 
         response = await TechHubApiClient.getTasksByTeam(
+          username: widget.authManager.userName!,
+          password: widget.authManager.password!,
           teamId: teamId,
           page: 1,
           limit: _initialLoadSize,
@@ -203,6 +207,8 @@ class _WorksScreenState extends State<WorksScreen> {
 
       if (isET) {
         response = await TechHubApiClient.getAllReports(
+          username: widget.authManager.userName!,
+          password: widget.authManager.password!,
           page: 1,
           limit: _initialLoadSize,
         );
@@ -218,6 +224,8 @@ class _WorksScreenState extends State<WorksScreen> {
         }
 
         response = await TechHubApiClient.getReportsByTeam(
+          username: widget.authManager.userName!,
+          password: widget.authManager.password!,
           teamId: teamId,
           page: 1,
           limit: _initialLoadSize,
@@ -291,12 +299,19 @@ class _WorksScreenState extends State<WorksScreen> {
         late ApiResponse<Map<String, dynamic>> response;
 
         if (isET) {
-          response = await TechHubApiClient.getAllTasks(page: page, limit: 100);
+          response = await TechHubApiClient.getAllTasks(
+            username: widget.authManager.userName!,
+            password: widget.authManager.password!,
+            page: page,
+            limit: 100,
+          );
         } else {
           final teamId = await _getTeamId();
           if (teamId == null) continue;
 
           response = await TechHubApiClient.getTasksByTeam(
+            username: widget.authManager.userName!,
+            password: widget.authManager.password!,
             teamId: teamId,
             page: page,
             limit: 100,
@@ -364,6 +379,8 @@ class _WorksScreenState extends State<WorksScreen> {
 
         if (isET) {
           response = await TechHubApiClient.getAllReports(
+            username: widget.authManager.userName!,
+            password: widget.authManager.password!,
             page: page,
             limit: 100,
           );
@@ -372,6 +389,8 @@ class _WorksScreenState extends State<WorksScreen> {
           if (teamId == null) continue;
 
           response = await TechHubApiClient.getReportsByTeam(
+            username: widget.authManager.userName!,
+            password: widget.authManager.password!,
             teamId: teamId,
             page: page,
             limit: 100,
@@ -446,7 +465,10 @@ class _WorksScreenState extends State<WorksScreen> {
         _isLoading = true;
       });
 
-      final response = await TechHubApiClient.getUsers();
+      final response = await TechHubApiClient.getUsers(
+        username: widget.authManager.userName!,
+        password: widget.authManager.password!,
+      );
 
       if (response.isSuccess && response.data != null) {
         if (mounted) {
@@ -465,7 +487,10 @@ class _WorksScreenState extends State<WorksScreen> {
     if (_isInventoryLoaded) return; // Ya está cargado
 
     try {
-      final response = await TechHubApiClient.getInventory();
+      final response = await TechHubApiClient.getInventory(
+        username: widget.authManager.userName!,
+        password: widget.authManager.password!,
+      );
 
       if (response.isSuccess && response.data != null) {
         if (mounted) {
@@ -484,7 +509,10 @@ class _WorksScreenState extends State<WorksScreen> {
     if (_isRecoveredInventoryLoaded) return; // Ya está cargado
 
     try {
-      final response = await TechHubApiClient.getRecoveredInventory();
+      final response = await TechHubApiClient.getRecoveredInventory(
+        username: widget.authManager.userName!,
+        password: widget.authManager.password!,
+      );
 
       if (response.isSuccess && response.data != null) {
         if (mounted) {
@@ -2792,7 +2820,11 @@ class _WorksScreenState extends State<WorksScreen> {
       );
 
       // Llamar al API para eliminar
-      final response = await TechHubApiClient.deleteReport(reportId: reportId);
+      final response = await TechHubApiClient.deleteReport(
+        username: widget.authManager.userName!,
+        password: widget.authManager.password!,
+        reportId: reportId,
+      );
 
       // Cerrar loading
       if (mounted) {

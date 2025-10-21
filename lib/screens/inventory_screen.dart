@@ -54,7 +54,10 @@ class _InventoryScreenState extends State<InventoryScreen>
   }
 
   Future<void> _loadMainInventory() async {
-    final response = await TechHubApiClient.getInventory();
+    final response = await TechHubApiClient.getInventory(
+      username: widget.authManager.userName!,
+      password: widget.authManager.password!,
+    );
     if (response.isSuccess && response.data != null) {
       setState(() {
         _mainInventory = response.data!;
@@ -63,7 +66,10 @@ class _InventoryScreenState extends State<InventoryScreen>
   }
 
   Future<void> _loadRecoveredInventory() async {
-    final response = await TechHubApiClient.getRecoveredInventory();
+    final response = await TechHubApiClient.getRecoveredInventory(
+      username: widget.authManager.userName!,
+      password: widget.authManager.password!,
+    );
     if (response.isSuccess && response.data != null) {
       setState(() {
         _recoveredInventory = response.data!;
@@ -72,7 +78,10 @@ class _InventoryScreenState extends State<InventoryScreen>
   }
 
   Future<void> _loadTeams() async {
-    final response = await TechHubApiClient.getTeams();
+    final response = await TechHubApiClient.getTeams(
+      username: widget.authManager.userName!,
+      password: widget.authManager.password!,
+    );
     if (response.isSuccess && response.data != null) {
       setState(() {
         _teams = response.data!;
@@ -84,6 +93,8 @@ class _InventoryScreenState extends State<InventoryScreen>
     if (_selectedTeamId == null) return;
 
     final response = await TechHubApiClient.getInventoryByTeam(
+      username: widget.authManager.userName!,
+      password: widget.authManager.password!,
       teamId: _selectedTeamId!,
     );
     if (response.isSuccess && response.data != null) {
@@ -1207,12 +1218,16 @@ class _InventoryScreenState extends State<InventoryScreen>
 
       if (tab == 0) {
         response = await TechHubApiClient.createMaterial(
+          username: widget.authManager.userName!,
+          password: widget.authManager.password!,
           name: name,
           quantity: quantity,
         );
       } else if (tab == 1) {
         // Para materiales recuperados, crear con cantidad mínima de 1 pero totalQuantity 0
         response = await TechHubApiClient.createRecoveredMaterial(
+          username: widget.authManager.userName!,
+          password: widget.authManager.password!,
           name: name,
           quantity: 1,
         );
@@ -1360,12 +1375,16 @@ class _InventoryScreenState extends State<InventoryScreen>
 
       if (type == InventoryType.main) {
         response = await TechHubApiClient.editMaterial(
+          username: widget.authManager.userName!,
+          password: widget.authManager.password!,
           id: id,
           name: name,
           quantity: quantity,
         );
       } else if (type == InventoryType.recovered) {
         response = await TechHubApiClient.editRecoveredMaterial(
+          username: widget.authManager.userName!,
+          password: widget.authManager.password!,
           id: id,
           name: name,
           quantity: quantity,
@@ -1542,6 +1561,8 @@ class _InventoryScreenState extends State<InventoryScreen>
 
       if (type == InventoryType.main) {
         response = await TechHubApiClient.moveToAnotherInventory(
+          username: widget.authManager.userName!,
+          password: widget.authManager.password!,
           change: 'Transferencia a equipo',
           materialId: materialId,
           quantity: quantity,
@@ -1549,6 +1570,8 @@ class _InventoryScreenState extends State<InventoryScreen>
         );
       } else if (type == InventoryType.recovered) {
         response = await TechHubApiClient.transferToTeam(
+          username: widget.authManager.userName!,
+          password: widget.authManager.password!,
           materialId: materialId,
           additionId: '', // This might need to be handled differently
           quantity: quantity,
@@ -1665,9 +1688,15 @@ class _InventoryScreenState extends State<InventoryScreen>
       ApiResponse<Map<String, dynamic>> response;
 
       if (type == InventoryType.main) {
-        response = await TechHubApiClient.deleteMaterial(id: materialId);
+        response = await TechHubApiClient.deleteMaterial(
+          username: widget.authManager.userName!,
+          password: widget.authManager.password!,
+          id: materialId,
+        );
       } else if (type == InventoryType.recovered) {
         response = await TechHubApiClient.deleteRecoveredMaterial(
+          username: widget.authManager.userName!,
+          password: widget.authManager.password!,
           id: materialId,
         );
       } else {
@@ -1890,6 +1919,8 @@ class _InventoryScreenState extends State<InventoryScreen>
       for (int i = 0; i < quantity; i++) {
         // Cada petición individual con quantity: 1
         final response = await TechHubApiClient.createRecoveredMaterial(
+          username: widget.authManager.userName!,
+          password: widget.authManager.password!,
           name: material['name'] ?? '',
           quantity: 1,
           originalMaterialId: material['originalMaterialId']?.toString(),
@@ -2213,6 +2244,8 @@ class _InventoryScreenState extends State<InventoryScreen>
   ) async {
     try {
       final response = await TechHubApiClient.updateAdditionStatus(
+        username: widget.authManager.userName!,
+        password: widget.authManager.password!,
         materialId: materialId,
         additionId: additionId,
         status: status,
@@ -2347,6 +2380,8 @@ class _InventoryScreenState extends State<InventoryScreen>
   ) async {
     try {
       final response = await TechHubApiClient.transferToTeam(
+        username: widget.authManager.userName!,
+        password: widget.authManager.password!,
         materialId: materialId,
         additionId: additionId,
         quantity: quantity,
@@ -2442,6 +2477,8 @@ class _InventoryScreenState extends State<InventoryScreen>
   Future<void> _deleteAddition(String materialId, String additionId) async {
     try {
       final response = await TechHubApiClient.deleteAddition(
+        username: widget.authManager.userName!,
+        password: widget.authManager.password!,
         materialId: materialId,
         additionId: additionId,
       );
@@ -2536,6 +2573,8 @@ class _InventoryScreenState extends State<InventoryScreen>
 
     try {
       final response = await TechHubApiClient.editRecoveredMaterial(
+        username: widget.authManager.userName!,
+        password: widget.authManager.password!,
         id: id,
         name: name,
       );
@@ -2634,6 +2673,8 @@ class _InventoryScreenState extends State<InventoryScreen>
 
     try {
       final response = await TechHubApiClient.deleteRecoveredMaterial(
+        username: widget.authManager.userName!,
+        password: widget.authManager.password!,
         id: materialId,
       );
 
