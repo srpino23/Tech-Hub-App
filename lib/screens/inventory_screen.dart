@@ -1,5 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:intl/intl.dart';
+import 'package:excel/excel.dart' as excel_pkg;
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'dart:typed_data';
 import '../auth_manager.dart';
 import '../services/techhub_api_client.dart';
 import '../services/api_response.dart';
@@ -23,16 +29,31 @@ class _InventoryScreenState extends State<InventoryScreen>
   bool _isLoading = true;
   String? _selectedTeamId;
 
+  // Variables para búsqueda
+  final TextEditingController _searchMainController = TextEditingController();
+  final TextEditingController _searchRecoveredController =
+      TextEditingController();
+  final TextEditingController _searchTeamController = TextEditingController();
+  List<Map<String, dynamic>> _filteredMainInventory = [];
+  List<Map<String, dynamic>> _filteredRecoveredInventory = [];
+  List<Map<String, dynamic>> _filteredTeamInventory = [];
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _searchMainController.addListener(_filterMainInventory);
+    _searchRecoveredController.addListener(_filterRecoveredInventory);
+    _searchTeamController.addListener(_filterTeamInventory);
     _loadData();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _searchMainController.dispose();
+    _searchRecoveredController.dispose();
+    _searchTeamController.dispose();
     super.dispose();
   }
 
@@ -61,6 +82,7 @@ class _InventoryScreenState extends State<InventoryScreen>
     if (response.isSuccess && response.data != null) {
       setState(() {
         _mainInventory = response.data!;
+        _filterMainInventory();
       });
     }
   }
@@ -73,6 +95,7 @@ class _InventoryScreenState extends State<InventoryScreen>
     if (response.isSuccess && response.data != null) {
       setState(() {
         _recoveredInventory = response.data!;
+        _filterRecoveredInventory();
       });
     }
   }
@@ -83,8 +106,24 @@ class _InventoryScreenState extends State<InventoryScreen>
       password: widget.authManager.password!,
     );
     if (response.isSuccess && response.data != null) {
+      // Filtrar solo los equipos permitidos
+      final allowedTeams = [
+        'eq com 1',
+        'eq com 2',
+        'et',
+        'zona sur',
+        'zona norte',
+      ];
+      final filteredTeams =
+          response.data!.where((team) {
+            final teamName = (team['name'] as String? ?? '').toLowerCase();
+            return allowedTeams.any(
+              (allowed) => allowed.toLowerCase() == teamName,
+            );
+          }).toList();
+
       setState(() {
-        _teams = response.data!;
+        _teams = filteredTeams;
       });
     }
   }
@@ -138,8 +177,54 @@ class _InventoryScreenState extends State<InventoryScreen>
 
       setState(() {
         _teamInventory = teamMaterials;
+        _filterTeamInventory();
       });
     }
+  }
+
+  void _filterMainInventory() {
+    final query = _searchMainController.text.toLowerCase();
+    setState(() {
+      if (query.isEmpty) {
+        _filteredMainInventory = _mainInventory;
+      } else {
+        _filteredMainInventory =
+            _mainInventory.where((material) {
+              final name = (material['name'] as String? ?? '').toLowerCase();
+              return name.contains(query);
+            }).toList();
+      }
+    });
+  }
+
+  void _filterRecoveredInventory() {
+    final query = _searchRecoveredController.text.toLowerCase();
+    setState(() {
+      if (query.isEmpty) {
+        _filteredRecoveredInventory = _recoveredInventory;
+      } else {
+        _filteredRecoveredInventory =
+            _recoveredInventory.where((material) {
+              final name = (material['name'] as String? ?? '').toLowerCase();
+              return name.contains(query);
+            }).toList();
+      }
+    });
+  }
+
+  void _filterTeamInventory() {
+    final query = _searchTeamController.text.toLowerCase();
+    setState(() {
+      if (query.isEmpty) {
+        _filteredTeamInventory = _teamInventory;
+      } else {
+        _filteredTeamInventory =
+            _teamInventory.where((material) {
+              final name = (material['name'] as String? ?? '').toLowerCase();
+              return name.contains(query);
+            }).toList();
+      }
+    });
   }
 
   @override
@@ -199,10 +284,23 @@ class _InventoryScreenState extends State<InventoryScreen>
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showAddMaterialDialog(),
-        backgroundColor: Colors.orange,
-        child: const Icon(LucideIcons.plus, color: Colors.white),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton(
+            heroTag: 'exportButton',
+            onPressed: _showExportMenu,
+            backgroundColor: Colors.blue,
+            child: const Icon(LucideIcons.download, color: Colors.white),
+          ),
+          const SizedBox(height: 10),
+          FloatingActionButton(
+            heroTag: 'addButton',
+            onPressed: () => _showAddMaterialDialog(),
+            backgroundColor: Colors.orange,
+            child: const Icon(LucideIcons.plus, color: Colors.white),
+          ),
+        ],
       ),
     );
   }
@@ -214,10 +312,15 @@ class _InventoryScreenState extends State<InventoryScreen>
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            _buildInventoryStats(_mainInventory),
+            _buildSearchField(_searchMainController, 'Buscar materiales...'),
+            const SizedBox(height: 16),
+            _buildInventoryStats(_filteredMainInventory),
             const SizedBox(height: 16),
             Expanded(
-              child: _buildMaterialList(_mainInventory, InventoryType.main),
+              child: _buildMaterialList(
+                _filteredMainInventory,
+                InventoryType.main,
+              ),
             ),
           ],
         ),
@@ -232,6 +335,11 @@ class _InventoryScreenState extends State<InventoryScreen>
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
+            _buildSearchField(
+              _searchRecoveredController,
+              'Buscar materiales recuperados...',
+            ),
+            const SizedBox(height: 16),
             _buildRecoveredInventoryStats(),
             const SizedBox(height: 16),
             Expanded(child: _buildRecoveredMaterialList()),
@@ -248,11 +356,16 @@ class _InventoryScreenState extends State<InventoryScreen>
         children: [
           _buildTeamSelector(),
           const SizedBox(height: 16),
+          _buildSearchField(_searchTeamController, 'Buscar materiales...'),
+          const SizedBox(height: 16),
           if (_selectedTeamId != null) ...[
-            _buildInventoryStats(_teamInventory),
+            _buildInventoryStats(_filteredTeamInventory),
             const SizedBox(height: 16),
             Expanded(
-              child: _buildMaterialList(_teamInventory, InventoryType.team),
+              child: _buildMaterialList(
+                _filteredTeamInventory,
+                InventoryType.team,
+              ),
             ),
           ] else
             const Expanded(
@@ -264,6 +377,48 @@ class _InventoryScreenState extends State<InventoryScreen>
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSearchField(TextEditingController controller, String hint) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withValues(alpha: 0.1),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: TextField(
+        controller: controller,
+        decoration: InputDecoration(
+          hintText: hint,
+          prefixIcon: const Icon(LucideIcons.search, color: Colors.orange),
+          suffixIcon:
+              controller.text.isNotEmpty
+                  ? IconButton(
+                    icon: const Icon(LucideIcons.x, size: 18),
+                    onPressed: () {
+                      controller.clear();
+                    },
+                  )
+                  : null,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 12,
+          ),
+        ),
       ),
     );
   }
@@ -417,8 +572,8 @@ class _InventoryScreenState extends State<InventoryScreen>
   }
 
   Widget _buildRecoveredInventoryStats() {
-    int totalMaterials = _recoveredInventory.length;
-    int totalAdditions = _recoveredInventory.fold(0, (sum, material) {
+    int totalMaterials = _filteredRecoveredInventory.length;
+    int totalAdditions = _filteredRecoveredInventory.fold(0, (sum, material) {
       final additions = material['additions'] as List? ?? [];
       return sum + additions.length;
     });
@@ -456,7 +611,7 @@ class _InventoryScreenState extends State<InventoryScreen>
   }
 
   Widget _buildRecoveredMaterialList() {
-    if (_recoveredInventory.isEmpty) {
+    if (_filteredRecoveredInventory.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -475,7 +630,9 @@ class _InventoryScreenState extends State<InventoryScreen>
             ),
             const SizedBox(height: 16),
             Text(
-              'No hay materiales recuperados',
+              _searchRecoveredController.text.isEmpty
+                  ? 'No hay materiales recuperados'
+                  : 'No se encontraron resultados',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
@@ -484,7 +641,9 @@ class _InventoryScreenState extends State<InventoryScreen>
             ),
             const SizedBox(height: 8),
             Text(
-              'Crea un material recuperado usando el botón +',
+              _searchRecoveredController.text.isEmpty
+                  ? 'Crea un material recuperado usando el botón +'
+                  : 'Intenta con otro término de búsqueda',
               style: TextStyle(color: Colors.grey.shade500),
             ),
           ],
@@ -493,9 +652,9 @@ class _InventoryScreenState extends State<InventoryScreen>
     }
 
     return ListView.builder(
-      itemCount: _recoveredInventory.length,
+      itemCount: _filteredRecoveredInventory.length,
       itemBuilder: (context, index) {
-        final material = _recoveredInventory[index];
+        final material = _filteredRecoveredInventory[index];
         return _buildRecoveredMaterialCard(material);
       },
     );
@@ -546,6 +705,19 @@ class _InventoryScreenState extends State<InventoryScreen>
               (value) => _handleRecoveredMaterialAction(value, material),
           itemBuilder:
               (context) => [
+                const PopupMenuItem(
+                  value: 'history',
+                  child: Row(
+                    children: [
+                      Icon(LucideIcons.history, size: 16, color: Colors.blue),
+                      SizedBox(width: 8),
+                      Text(
+                        'Ver Historial',
+                        style: TextStyle(color: Colors.blue),
+                      ),
+                    ],
+                  ),
+                ),
                 const PopupMenuItem(
                   value: 'add',
                   child: Row(
@@ -885,6 +1057,19 @@ class _InventoryScreenState extends State<InventoryScreen>
           onSelected: (value) => _handleMaterialAction(value, material, type),
           itemBuilder:
               (context) => [
+                const PopupMenuItem(
+                  value: 'history',
+                  child: Row(
+                    children: [
+                      Icon(LucideIcons.history, size: 16, color: Colors.blue),
+                      SizedBox(width: 8),
+                      Text(
+                        'Ver Historial',
+                        style: TextStyle(color: Colors.blue),
+                      ),
+                    ],
+                  ),
+                ),
                 if (type != InventoryType.team) ...[
                   const PopupMenuItem(
                     value: 'edit',
@@ -905,22 +1090,6 @@ class _InventoryScreenState extends State<InventoryScreen>
                         Icon(LucideIcons.arrowRight, size: 16),
                         SizedBox(width: 8),
                         Text('Transferir'),
-                      ],
-                    ),
-                  ),
-                ],
-                if (type == InventoryType.team) ...[
-                  const PopupMenuItem(
-                    value: 'return',
-                    child: Row(
-                      children: [
-                        Icon(
-                          LucideIcons.arrowLeft,
-                          size: 16,
-                          color: Colors.blue,
-                        ),
-                        SizedBox(width: 8),
-                        Text('Retornar', style: TextStyle(color: Colors.blue)),
                       ],
                     ),
                   ),
@@ -959,132 +1128,19 @@ class _InventoryScreenState extends State<InventoryScreen>
     InventoryType type,
   ) {
     switch (action) {
+      case 'history':
+        _showMaterialHistoryDialog(material, type);
+        break;
       case 'edit':
         _showEditMaterialDialog(material, type);
         break;
       case 'move':
         _showTransferMaterialDialog(material, type);
         break;
-      case 'return':
-        _showReturnMaterialDialog(material);
-        break;
       case 'delete':
         _showDeleteMaterialDialog(material, type);
         break;
     }
-  }
-
-  void _showReturnMaterialDialog(Map<String, dynamic> material) {
-    final isRecovered = material['isRecovered'] as bool? ?? false;
-    final materialName = material['name'] as String? ?? 'Sin nombre';
-    final quantity = material['quantity'] ?? 0;
-
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            title: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade100,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    LucideIcons.arrowLeft,
-                    color: Colors.blue.shade700,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                const Text('Retornar Material'),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  isRecovered ? LucideIcons.recycle : LucideIcons.package,
-                  size: 48,
-                  color: isRecovered ? Colors.green : Colors.orange,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  '¿Retornar "$materialName" al inventario ${isRecovered ? 'recuperado' : 'principal'}?',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 16),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Cantidad: $quantity',
-                  style: TextStyle(color: Colors.grey.shade600),
-                ),
-                if (isRecovered) ...[
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.green.shade200),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          LucideIcons.info,
-                          color: Colors.green.shade700,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Se retornará al inventario de materiales recuperados',
-                            style: TextStyle(
-                              color: Colors.green.shade700,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(
-                  'Cancelar',
-                  style: TextStyle(color: Colors.grey.shade600),
-                ),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                onPressed: () => _returnMaterialToInventory(material),
-                child: const Text(
-                  'Retornar',
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-    );
-  }
-
-  Future<void> _returnMaterialToInventory(Map<String, dynamic> material) async {
-    // Aquí implementarías la lógica para retornar el material
-    // Por ahora solo mostramos un mensaje
-    Navigator.pop(context);
-    _showSnackBar('Función de retorno en desarrollo');
   }
 
   void _showAddMaterialDialog() {
@@ -1731,6 +1787,9 @@ class _InventoryScreenState extends State<InventoryScreen>
     Map<String, dynamic> material,
   ) {
     switch (action) {
+      case 'history':
+        _showRecoveredMaterialHistoryDialog(material);
+        break;
       case 'add':
         _showAddUnitsDialog(material);
         break;
@@ -2524,7 +2583,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                   child: Icon(LucideIcons.edit, color: Colors.blue.shade700),
                 ),
                 const SizedBox(width: 12),
-                const Text('Editar Material Recuperado'),
+                const Text('Editar RMA'),
               ],
             ),
             content: TextField(
@@ -2715,6 +2774,1219 @@ class _InventoryScreenState extends State<InventoryScreen>
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
+    );
+  }
+
+  String _formatDate(dynamic dateField) {
+    try {
+      if (dateField == null) return 'Fecha no disponible';
+
+      DateTime date;
+      if (dateField is Map && dateField.containsKey('\$date')) {
+        final dateString = dateField['\$date'] as String;
+        date = DateTime.parse(dateString);
+      } else if (dateField is String) {
+        date = DateTime.parse(dateField);
+      } else if (dateField is DateTime) {
+        date = dateField;
+      } else {
+        return 'Formato de fecha inválido';
+      }
+
+      return DateFormat('dd/MM/yyyy HH:mm').format(date);
+    } catch (e) {
+      return 'Error al formatear fecha';
+    }
+  }
+
+  void _showMaterialHistoryDialog(
+    Map<String, dynamic> material,
+    InventoryType type,
+  ) {
+    final name = material['name'] as String? ?? 'Sin nombre';
+    final history = material['history'] as List? ?? [];
+    final creationDate = material['date'];
+
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(LucideIcons.history, color: Colors.blue.shade700),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Historial',
+                    style: const TextStyle(fontSize: 18),
+                  ),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.green.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          LucideIcons.calendar,
+                          color: Colors.green.shade700,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Creado: ${_formatDate(creationDate)}',
+                            style: TextStyle(
+                              color: Colors.green.shade700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Historial de Movimientos:',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                  ),
+                  const SizedBox(height: 8),
+                  if (history.isEmpty)
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          'No hay movimientos registrados',
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    Flexible(
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: history.length,
+                        itemBuilder: (context, index) {
+                          final entry = history[history.length - 1 - index];
+                          final change =
+                              entry['change'] as String? ?? 'Sin descripción';
+                          final quantity = entry['quantity']?.toString() ?? '0';
+                          final date = entry['date'];
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: Colors.grey.shade200,
+                                width: 1,
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.orange.shade100,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        quantity,
+                                        style: TextStyle(
+                                          color: Colors.orange.shade700,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        change,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w500,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Icon(
+                                      LucideIcons.clock,
+                                      size: 12,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      _formatDate(date),
+                                      style: TextStyle(
+                                        color: Colors.grey.shade600,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cerrar'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  void _showRecoveredMaterialHistoryDialog(Map<String, dynamic> material) {
+    final name = material['name'] as String? ?? 'Sin nombre';
+    final history = material['history'] as List? ?? [];
+    final additions = material['additions'] as List? ?? [];
+    final creationDate = material['date'];
+
+    // Combinar el historial del material con el historial de cada addition
+    List<Map<String, dynamic>> allHistory = [];
+
+    // Agregar historial del material
+    for (var entry in history) {
+      allHistory.add({
+        'type': 'material',
+        'change': entry['change'],
+        'quantity': entry['quantity'],
+        'date': entry['date'],
+      });
+    }
+
+    // Agregar historial de cada addition
+    for (var addition in additions) {
+      final additionHistory = addition['history'] as List? ?? [];
+      for (var entry in additionHistory) {
+        allHistory.add({
+          'type': 'addition',
+          'change': entry['change'],
+          'quantity': entry['quantity'],
+          'date': entry['date'],
+        });
+      }
+    }
+
+    // Ordenar por fecha (más reciente primero)
+    allHistory.sort((a, b) {
+      try {
+        final dateA = _parseDateForSort(a['date']);
+        final dateB = _parseDateForSort(b['date']);
+        return dateB.compareTo(dateA);
+      } catch (e) {
+        return 0;
+      }
+    });
+
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    LucideIcons.history,
+                    color: Colors.green.shade700,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Historial',
+                    style: const TextStyle(fontSize: 18),
+                  ),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(LucideIcons.recycle, color: Colors.green.shade700),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          name,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.green.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          LucideIcons.calendar,
+                          color: Colors.green.shade700,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Creado: ${_formatDate(creationDate)}',
+                            style: TextStyle(
+                              color: Colors.green.shade700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          LucideIcons.layers,
+                          color: Colors.blue.shade700,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Total de unidades: ${additions.length}',
+                          style: TextStyle(
+                            color: Colors.blue.shade700,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Historial de Movimientos:',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                  ),
+                  const SizedBox(height: 8),
+                  if (allHistory.isEmpty)
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          'No hay movimientos registrados',
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    Flexible(
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: allHistory.length,
+                        itemBuilder: (context, index) {
+                          final entry = allHistory[index];
+                          final change =
+                              entry['change'] as String? ?? 'Sin descripción';
+                          final quantity = entry['quantity']?.toString() ?? '0';
+                          final date = entry['date'];
+                          final type = entry['type'] as String;
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color:
+                                  type == 'material'
+                                      ? Colors.green.shade50
+                                      : Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color:
+                                    type == 'material'
+                                        ? Colors.green.shade200
+                                        : Colors.blue.shade200,
+                                width: 1,
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color:
+                                            type == 'material'
+                                                ? Colors.green.shade200
+                                                : Colors.blue.shade200,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        quantity,
+                                        style: TextStyle(
+                                          color:
+                                              type == 'material'
+                                                  ? Colors.green.shade900
+                                                  : Colors.blue.shade900,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        change,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w500,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Icon(
+                                      LucideIcons.clock,
+                                      size: 12,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      _formatDate(date),
+                                      style: TextStyle(
+                                        color: Colors.grey.shade600,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cerrar'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  DateTime _parseDateForSort(dynamic dateField) {
+    if (dateField == null) return DateTime(1970);
+
+    if (dateField is Map && dateField.containsKey('\$date')) {
+      final dateString = dateField['\$date'] as String;
+      return DateTime.parse(dateString);
+    } else if (dateField is String) {
+      return DateTime.parse(dateField);
+    } else if (dateField is DateTime) {
+      return dateField;
+    }
+
+    return DateTime(1970);
+  }
+
+  Future<void> _exportToExcel() async {
+    try {
+      final excel = excel_pkg.Excel.createExcel();
+      final currentTab = _tabController.index;
+
+      // Determinar qué datos exportar según la pestaña activa
+      if (currentTab == 0) {
+        // Exportar inventario principal
+        _exportMainInventoryToExcel(excel);
+      } else if (currentTab == 1) {
+        // Exportar inventario recuperado
+        _exportRecoveredInventoryToExcel(excel);
+      } else {
+        // Exportar inventario de equipos
+        _exportTeamInventoryToExcel(excel);
+      }
+
+      // Guardar archivo
+      final bytes = excel.encode();
+      if (bytes == null) {
+        _showSnackBar('Error al generar archivo Excel', isError: true);
+        return;
+      }
+
+      final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final fileName = 'inventario_$timestamp.xlsx';
+
+      // Compartir el archivo directamente
+      await Printing.sharePdf(
+        bytes: Uint8List.fromList(bytes),
+        filename: fileName,
+      );
+
+      _showSnackBar('Excel generado exitosamente');
+    } catch (e) {
+      _showSnackBar('Error al exportar a Excel: $e', isError: true);
+    }
+  }
+
+  void _exportMainInventoryToExcel(excel_pkg.Excel excel) {
+    final sheet = excel['Inventario Principal'];
+
+    // Encabezados
+    sheet.appendRow([
+      excel_pkg.TextCellValue('Nombre'),
+      excel_pkg.TextCellValue('Cantidad'),
+      excel_pkg.TextCellValue('Fecha Creación'),
+      excel_pkg.TextCellValue('Total Movimientos'),
+    ]);
+
+    int totalMateriales = 0;
+    int totalCantidad = 0;
+    int totalMovimientos = 0;
+
+    // Datos
+    for (var material in _filteredMainInventory) {
+      final name = material['name'] ?? 'Sin nombre';
+      final quantity = material['quantity']?.toString() ?? '0';
+      final date = _formatDate(material['date']);
+      final history = material['history'] as List? ?? [];
+
+      sheet.appendRow([
+        excel_pkg.TextCellValue(name),
+        excel_pkg.TextCellValue(quantity),
+        excel_pkg.TextCellValue(date),
+        excel_pkg.IntCellValue(history.length),
+      ]);
+
+      totalMateriales++;
+      totalCantidad += int.tryParse(quantity) ?? 0;
+      totalMovimientos += history.length;
+    }
+
+    // Estadísticas
+    sheet.appendRow([]);
+    sheet.appendRow([excel_pkg.TextCellValue('ESTADÍSTICAS')]);
+    sheet.appendRow([
+      excel_pkg.TextCellValue('Total Materiales:'),
+      excel_pkg.IntCellValue(totalMateriales),
+    ]);
+    sheet.appendRow([
+      excel_pkg.TextCellValue('Cantidad Total:'),
+      excel_pkg.IntCellValue(totalCantidad),
+    ]);
+    sheet.appendRow([
+      excel_pkg.TextCellValue('Total Movimientos:'),
+      excel_pkg.IntCellValue(totalMovimientos),
+    ]);
+
+    // Hoja de historial
+    final historySheet = excel['Historial'];
+    historySheet.appendRow([
+      excel_pkg.TextCellValue('Material'),
+      excel_pkg.TextCellValue('Cambio'),
+      excel_pkg.TextCellValue('Cantidad'),
+      excel_pkg.TextCellValue('Fecha'),
+    ]);
+
+    for (var material in _filteredMainInventory) {
+      final name = material['name'] ?? 'Sin nombre';
+      final history = material['history'] as List? ?? [];
+
+      for (var entry in history) {
+        historySheet.appendRow([
+          excel_pkg.TextCellValue(name),
+          excel_pkg.TextCellValue(entry['change'] ?? 'Sin descripción'),
+          excel_pkg.TextCellValue(entry['quantity']?.toString() ?? '0'),
+          excel_pkg.TextCellValue(_formatDate(entry['date'])),
+        ]);
+      }
+    }
+  }
+
+  void _exportRecoveredInventoryToExcel(excel_pkg.Excel excel) {
+    final sheet = excel['Inventario Recuperado'];
+
+    // Encabezados
+    sheet.appendRow([
+      excel_pkg.TextCellValue('Nombre'),
+      excel_pkg.TextCellValue('Unidades'),
+      excel_pkg.TextCellValue('Fecha Creación'),
+      excel_pkg.TextCellValue('Total Movimientos'),
+    ]);
+
+    int totalMateriales = 0;
+    int totalUnidades = 0;
+    int totalMovimientos = 0;
+
+    // Datos
+    for (var material in _filteredRecoveredInventory) {
+      final name = material['name'] ?? 'Sin nombre';
+      final additions = material['additions'] as List? ?? [];
+      final date = _formatDate(material['date']);
+      final history = material['history'] as List? ?? [];
+
+      sheet.appendRow([
+        excel_pkg.TextCellValue(name),
+        excel_pkg.IntCellValue(additions.length),
+        excel_pkg.TextCellValue(date),
+        excel_pkg.IntCellValue(history.length),
+      ]);
+
+      totalMateriales++;
+      totalUnidades += additions.length;
+      totalMovimientos += history.length;
+    }
+
+    // Estadísticas
+    sheet.appendRow([]);
+    sheet.appendRow([excel_pkg.TextCellValue('ESTADÍSTICAS')]);
+    sheet.appendRow([
+      excel_pkg.TextCellValue('Total Materiales:'),
+      excel_pkg.IntCellValue(totalMateriales),
+    ]);
+    sheet.appendRow([
+      excel_pkg.TextCellValue('Total Unidades:'),
+      excel_pkg.IntCellValue(totalUnidades),
+    ]);
+    sheet.appendRow([
+      excel_pkg.TextCellValue('Total Movimientos:'),
+      excel_pkg.IntCellValue(totalMovimientos),
+    ]);
+
+    // Hoja de historial
+    final historySheet = excel['Historial'];
+    historySheet.appendRow([
+      excel_pkg.TextCellValue('Material'),
+      excel_pkg.TextCellValue('Tipo'),
+      excel_pkg.TextCellValue('Cambio'),
+      excel_pkg.TextCellValue('Cantidad'),
+      excel_pkg.TextCellValue('Fecha'),
+    ]);
+
+    for (var material in _filteredRecoveredInventory) {
+      final name = material['name'] ?? 'Sin nombre';
+      final history = material['history'] as List? ?? [];
+      final additions = material['additions'] as List? ?? [];
+
+      // Historial del material
+      for (var entry in history) {
+        historySheet.appendRow([
+          excel_pkg.TextCellValue(name),
+          excel_pkg.TextCellValue('Material'),
+          excel_pkg.TextCellValue(entry['change'] ?? 'Sin descripción'),
+          excel_pkg.TextCellValue(entry['quantity']?.toString() ?? '0'),
+          excel_pkg.TextCellValue(_formatDate(entry['date'])),
+        ]);
+      }
+
+      // Historial de additions
+      for (var addition in additions) {
+        final additionHistory = addition['history'] as List? ?? [];
+        for (var entry in additionHistory) {
+          historySheet.appendRow([
+            excel_pkg.TextCellValue(name),
+            excel_pkg.TextCellValue('Unidad'),
+            excel_pkg.TextCellValue(entry['change'] ?? 'Sin descripción'),
+            excel_pkg.TextCellValue(entry['quantity']?.toString() ?? '0'),
+            excel_pkg.TextCellValue(_formatDate(entry['date'])),
+          ]);
+        }
+      }
+    }
+  }
+
+  void _exportTeamInventoryToExcel(excel_pkg.Excel excel) {
+    if (_selectedTeamId == null) {
+      _showSnackBar('Por favor selecciona un equipo', isError: true);
+      return;
+    }
+
+    final selectedTeam = _teams.firstWhere(
+      (team) => team['_id'].toString() == _selectedTeamId,
+      orElse: () => {'name': 'Equipo Desconocido'},
+    );
+    final teamName = selectedTeam['name'] ?? 'Equipo Desconocido';
+
+    final sheet = excel['Inventario $teamName'];
+
+    // Encabezados
+    sheet.appendRow([
+      excel_pkg.TextCellValue('Nombre'),
+      excel_pkg.TextCellValue('Cantidad'),
+      excel_pkg.TextCellValue('Tipo'),
+    ]);
+
+    int totalMateriales = 0;
+    int totalCantidad = 0;
+    int totalRecuperados = 0;
+
+    // Datos
+    for (var material in _filteredTeamInventory) {
+      final name = material['name'] ?? 'Sin nombre';
+      final quantity = material['quantity']?.toString() ?? '0';
+      final isRecovered = material['isRecovered'] as bool? ?? false;
+
+      sheet.appendRow([
+        excel_pkg.TextCellValue(name),
+        excel_pkg.TextCellValue(quantity),
+        excel_pkg.TextCellValue(isRecovered ? 'Recuperado' : 'Normal'),
+      ]);
+
+      totalMateriales++;
+      totalCantidad += int.tryParse(quantity) ?? 0;
+      if (isRecovered) totalRecuperados++;
+    }
+
+    // Estadísticas
+    sheet.appendRow([]);
+    sheet.appendRow([excel_pkg.TextCellValue('ESTADÍSTICAS')]);
+    sheet.appendRow([
+      excel_pkg.TextCellValue('Equipo:'),
+      excel_pkg.TextCellValue(teamName),
+    ]);
+    sheet.appendRow([
+      excel_pkg.TextCellValue('Total Materiales:'),
+      excel_pkg.IntCellValue(totalMateriales),
+    ]);
+    sheet.appendRow([
+      excel_pkg.TextCellValue('Cantidad Total:'),
+      excel_pkg.IntCellValue(totalCantidad),
+    ]);
+    sheet.appendRow([
+      excel_pkg.TextCellValue('Materiales Recuperados:'),
+      excel_pkg.IntCellValue(totalRecuperados),
+    ]);
+  }
+
+  Future<void> _exportToPDF() async {
+    try {
+      final pdf = pw.Document();
+      final currentTab = _tabController.index;
+
+      // Determinar qué datos exportar según la pestaña activa
+      if (currentTab == 0) {
+        await _exportMainInventoryToPDF(pdf);
+      } else if (currentTab == 1) {
+        await _exportRecoveredInventoryToPDF(pdf);
+      } else {
+        await _exportTeamInventoryToPDF(pdf);
+      }
+
+      // Guardar y compartir PDF
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => pdf.save(),
+      );
+
+      _showSnackBar('PDF generado exitosamente');
+    } catch (e) {
+      _showSnackBar('Error al exportar a PDF: $e', isError: true);
+    }
+  }
+
+  Future<void> _exportMainInventoryToPDF(pw.Document pdf) async {
+    int totalMateriales = _filteredMainInventory.length;
+    int totalCantidad = _filteredMainInventory.fold(0, (sum, item) {
+      final quantity = item['quantity'];
+      int quantityInt = 0;
+      if (quantity is int) {
+        quantityInt = quantity;
+      } else if (quantity is String) {
+        quantityInt = int.tryParse(quantity) ?? 0;
+      }
+      return sum + quantityInt;
+    });
+    int totalMovimientos = _filteredMainInventory.fold(0, (sum, item) {
+      final history = item['history'] as List? ?? [];
+      return sum + history.length;
+    });
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        build: (pw.Context context) {
+          return [
+            pw.Header(
+              level: 0,
+              child: pw.Text(
+                'Inventario Principal',
+                style: pw.TextStyle(
+                  fontSize: 24,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+            ),
+            pw.SizedBox(height: 20),
+            pw.Text(
+              'Fecha: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}',
+              style: const pw.TextStyle(fontSize: 12),
+            ),
+            pw.SizedBox(height: 20),
+            pw.Container(
+              padding: const pw.EdgeInsets.all(10),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.orange),
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'ESTADÍSTICAS',
+                    style: pw.TextStyle(
+                      fontSize: 16,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  pw.SizedBox(height: 10),
+                  pw.Text('Total de Materiales: $totalMateriales'),
+                  pw.Text('Cantidad Total: $totalCantidad'),
+                  pw.Text('Total de Movimientos: $totalMovimientos'),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 20),
+            pw.Text(
+              'LISTADO DE MATERIALES',
+              style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 10),
+            pw.TableHelper.fromTextArray(
+              headers: ['Nombre', 'Cantidad', 'Fecha Creación', 'Movimientos'],
+              data:
+                  _filteredMainInventory.map((material) {
+                    final name = material['name'] ?? 'Sin nombre';
+                    final quantity = material['quantity']?.toString() ?? '0';
+                    final date = _formatDate(material['date']);
+                    final history = material['history'] as List? ?? [];
+                    return [name, quantity, date, history.length.toString()];
+                  }).toList(),
+              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+              cellAlignment: pw.Alignment.centerLeft,
+            ),
+          ];
+        },
+      ),
+    );
+
+    // Página de historial (limitado a primeros 10 materiales con historial)
+    final materialsWithHistory =
+        _filteredMainInventory
+            .where((m) {
+              final history = m['history'] as List? ?? [];
+              return history.isNotEmpty;
+            })
+            .take(10)
+            .toList();
+
+    if (materialsWithHistory.isNotEmpty) {
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          build: (pw.Context context) {
+            return [
+              pw.Header(
+                level: 0,
+                child: pw.Text(
+                  'Historial de Movimientos (Últimos 10)',
+                  style: pw.TextStyle(
+                    fontSize: 20,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+              ),
+              pw.SizedBox(height: 20),
+              ...materialsWithHistory.map((material) {
+                final name = material['name'] ?? 'Sin nombre';
+                final history =
+                    (material['history'] as List? ?? []).take(20).toList();
+
+                return pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      name,
+                      style: pw.TextStyle(
+                        fontSize: 14,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                    pw.SizedBox(height: 5),
+                    pw.TableHelper.fromTextArray(
+                      headers: ['Cambio', 'Cantidad', 'Fecha'],
+                      data:
+                          history.map((entry) {
+                            return [
+                              entry['change'] ?? 'Sin descripción',
+                              entry['quantity']?.toString() ?? '0',
+                              _formatDate(entry['date']),
+                            ];
+                          }).toList(),
+                      cellAlignment: pw.Alignment.centerLeft,
+                    ),
+                    pw.SizedBox(height: 15),
+                  ],
+                );
+              }),
+            ];
+          },
+        ),
+      );
+    }
+  }
+
+  Future<void> _exportRecoveredInventoryToPDF(pw.Document pdf) async {
+    int totalMateriales = _filteredRecoveredInventory.length;
+    int totalUnidades = _filteredRecoveredInventory.fold(0, (sum, item) {
+      final additions = item['additions'] as List? ?? [];
+      return sum + additions.length;
+    });
+    int totalMovimientos = _filteredRecoveredInventory.fold(0, (sum, item) {
+      final history = item['history'] as List? ?? [];
+      return sum + history.length;
+    });
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        build: (pw.Context context) {
+          return [
+            pw.Header(
+              level: 0,
+              child: pw.Text(
+                'Inventario Recuperado',
+                style: pw.TextStyle(
+                  fontSize: 24,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.green700,
+                ),
+              ),
+            ),
+            pw.SizedBox(height: 20),
+            pw.Text(
+              'Fecha: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}',
+              style: const pw.TextStyle(fontSize: 12),
+            ),
+            pw.SizedBox(height: 20),
+            pw.Container(
+              padding: const pw.EdgeInsets.all(10),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.green),
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'ESTADÍSTICAS',
+                    style: pw.TextStyle(
+                      fontSize: 16,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.green700,
+                    ),
+                  ),
+                  pw.SizedBox(height: 10),
+                  pw.Text('Total de Materiales: $totalMateriales'),
+                  pw.Text('Total de Unidades: $totalUnidades'),
+                  pw.Text('Total de Movimientos: $totalMovimientos'),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 20),
+            pw.Text(
+              'LISTADO DE MATERIALES',
+              style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 10),
+            pw.TableHelper.fromTextArray(
+              headers: ['Nombre', 'Unidades', 'Fecha Creación', 'Movimientos'],
+              data:
+                  _filteredRecoveredInventory.map((material) {
+                    final name = material['name'] ?? 'Sin nombre';
+                    final additions = material['additions'] as List? ?? [];
+                    final date = _formatDate(material['date']);
+                    final history = material['history'] as List? ?? [];
+                    return [
+                      name,
+                      additions.length.toString(),
+                      date,
+                      history.length.toString(),
+                    ];
+                  }).toList(),
+              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+              cellAlignment: pw.Alignment.centerLeft,
+            ),
+          ];
+        },
+      ),
+    );
+  }
+
+  Future<void> _exportTeamInventoryToPDF(pw.Document pdf) async {
+    if (_selectedTeamId == null) {
+      _showSnackBar('Por favor selecciona un equipo', isError: true);
+      return;
+    }
+
+    final selectedTeam = _teams.firstWhere(
+      (team) => team['_id'].toString() == _selectedTeamId,
+      orElse: () => {'name': 'Equipo Desconocido'},
+    );
+    final teamName = selectedTeam['name'] ?? 'Equipo Desconocido';
+
+    int totalMateriales = _filteredTeamInventory.length;
+    int totalCantidad = _filteredTeamInventory.fold(0, (sum, item) {
+      final quantity = item['quantity'];
+      int quantityInt = 0;
+      if (quantity is int) {
+        quantityInt = quantity;
+      } else if (quantity is String) {
+        quantityInt = int.tryParse(quantity) ?? 0;
+      }
+      return sum + quantityInt;
+    });
+    int totalRecuperados =
+        _filteredTeamInventory.where((m) => m['isRecovered'] == true).length;
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        build: (pw.Context context) {
+          return [
+            pw.Header(
+              level: 0,
+              child: pw.Text(
+                'Inventario de Equipo: $teamName',
+                style: pw.TextStyle(
+                  fontSize: 24,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.blue700,
+                ),
+              ),
+            ),
+            pw.SizedBox(height: 20),
+            pw.Text(
+              'Fecha: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}',
+              style: const pw.TextStyle(fontSize: 12),
+            ),
+            pw.SizedBox(height: 20),
+            pw.Container(
+              padding: const pw.EdgeInsets.all(10),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.blue),
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'ESTADÍSTICAS',
+                    style: pw.TextStyle(
+                      fontSize: 16,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.blue700,
+                    ),
+                  ),
+                  pw.SizedBox(height: 10),
+                  pw.Text('Equipo: $teamName'),
+                  pw.Text('Total de Materiales: $totalMateriales'),
+                  pw.Text('Cantidad Total: $totalCantidad'),
+                  pw.Text('Materiales Recuperados: $totalRecuperados'),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 20),
+            pw.Text(
+              'LISTADO DE MATERIALES',
+              style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 10),
+            pw.TableHelper.fromTextArray(
+              headers: ['Nombre', 'Cantidad', 'Tipo'],
+              data:
+                  _filteredTeamInventory.map((material) {
+                    final name = material['name'] ?? 'Sin nombre';
+                    final quantity = material['quantity']?.toString() ?? '0';
+                    final isRecovered =
+                        material['isRecovered'] as bool? ?? false;
+                    return [
+                      name,
+                      quantity,
+                      isRecovered ? 'Recuperado' : 'Normal',
+                    ];
+                  }).toList(),
+              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+              cellAlignment: pw.Alignment.centerLeft,
+            ),
+          ];
+        },
+      ),
+    );
+  }
+
+  void _showExportMenu() {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    LucideIcons.download,
+                    color: Colors.blue.shade700,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Text('Exportar Inventario'),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      LucideIcons.fileSpreadsheet,
+                      color: Colors.green.shade700,
+                    ),
+                  ),
+                  title: const Text('Exportar a Excel'),
+                  subtitle: const Text('Archivo .xlsx con hojas de datos'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _exportToExcel();
+                  },
+                ),
+                const Divider(),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      LucideIcons.fileText,
+                      color: Colors.red.shade700,
+                    ),
+                  ),
+                  title: const Text('Exportar a PDF'),
+                  subtitle: const Text('Documento PDF formateado'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _exportToPDF();
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancelar'),
+              ),
+            ],
+          ),
     );
   }
 }
