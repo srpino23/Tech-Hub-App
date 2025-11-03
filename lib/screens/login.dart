@@ -56,7 +56,6 @@ class _LoginScreenState extends State<LoginScreen> {
             children: [
               SizedBox(height: MediaQuery.of(context).size.height * 0.1),
               Container(
-                padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: Colors.orange.shade50,
@@ -64,8 +63,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: ClipOval(
                   child: Image.asset(
                     'lib/assets/images/logo.png',
-                    width: 80,
-                    height: 80,
+                    width: 100,
+                    height: 100,
                     fit: BoxFit.cover,
                   ),
                 ),

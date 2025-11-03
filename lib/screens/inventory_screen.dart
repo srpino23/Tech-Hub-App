@@ -1738,7 +1738,8 @@ class _InventoryScreenState extends State<InventoryScreen>
     Map<String, dynamic> material,
     InventoryType type,
   ) async {
-    final materialId = material['_id']?.toString() ?? '';
+    final materialId =
+        material['materialId']?.toString() ?? material['_id']?.toString() ?? '';
 
     try {
       ApiResponse<Map<String, dynamic>> response;
@@ -1755,11 +1756,21 @@ class _InventoryScreenState extends State<InventoryScreen>
           password: widget.authManager.password!,
           id: materialId,
         );
-      } else {
-        _showSnackBar(
-          'No se puede eliminar materiales del inventario de equipo',
-          isError: true,
+      } else if (type == InventoryType.team) {
+        // Eliminar material del equipo
+        if (_selectedTeamId == null) {
+          _showSnackBar('No se ha seleccionado un equipo', isError: true);
+          return;
+        }
+
+        response = await TechHubApiClient.removeMaterialFromTeam(
+          username: widget.authManager.userName!,
+          password: widget.authManager.password!,
+          teamId: _selectedTeamId!,
+          materialId: materialId,
         );
+      } else {
+        _showSnackBar('Tipo de inventario no reconocido', isError: true);
         return;
       }
 
@@ -1768,7 +1779,13 @@ class _InventoryScreenState extends State<InventoryScreen>
 
       if (response.isSuccess) {
         _showSnackBar('Material eliminado exitosamente');
-        _loadData();
+
+        // Si es de equipo, recargar solo el inventario del equipo seleccionado
+        if (type == InventoryType.team) {
+          await _loadTeamInventory();
+        } else {
+          _loadData();
+        }
       } else {
         _showSnackBar(
           response.error ?? 'Error al eliminar material',

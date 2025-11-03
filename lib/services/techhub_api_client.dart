@@ -6,8 +6,7 @@ import 'package:http_parser/http_parser.dart';
 import 'api_response.dart';
 
 class TechHubApiClient {
-  static const String baseUrl =
-      'https://74280601d366.sn.mynetname.net/techhub/api';
+  static const String baseUrl = 'https://74280601d366.sn.mynetname.net/techhub/api';
   static const Duration timeoutDuration = Duration(seconds: 30);
   static const Duration longTimeoutDuration = Duration(
     minutes: 5,
@@ -107,6 +106,149 @@ class TechHubApiClient {
   }
 
   // Task and Report endpoints
+  static Future<ApiResponse<Map<String, dynamic>>> createTask({
+    required String username,
+    required String password,
+    required String team,
+    required String title,
+    required String location,
+    required String toDo,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/task/createTask'),
+            headers: _jsonHeaders,
+            body: json.encode({
+              'username': username,
+              'password': password,
+              'team': team,
+              'title': title,
+              'location': location,
+              'toDo': toDo,
+            }),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> startTask({
+    required String username,
+    required String password,
+    required String taskId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/task/startTask'),
+            headers: _jsonHeaders,
+            body: json.encode({
+              'username': username,
+              'password': password,
+              'taskId': taskId,
+            }),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> markTaskCompleted({
+    required String username,
+    required String password,
+    required String taskId,
+    required List<dynamic> images,
+  }) async {
+    try {
+      return await _retryOperation(
+        () async {
+          var request = http.MultipartRequest(
+            'POST',
+            Uri.parse('$baseUrl/task/markCompleted'),
+          );
+
+          // Construir body
+          final body = <String, String>{
+            'username': username,
+            'password': password,
+            'taskId': taskId,
+          };
+
+          // Asegurar que los campos estén añadidos (form-data)
+          request.fields.addAll(body);
+
+          // Agregar imágenes
+          for (int i = 0; i < images.length; i++) {
+            final image = images[i];
+            if (image is File) {
+              // Handle File objects (mobile/desktop)
+              final file = await http.MultipartFile.fromPath(
+                'images',
+                image.path,
+              );
+              request.files.add(file);
+            } else if (image.runtimeType.toString().contains(
+              'WebFileWrapper',
+            )) {
+              // Handle legacy web files
+              final bytes =
+                  await (image as dynamic).readAsBytes() as List<int>;
+              final file = http.MultipartFile.fromBytes(
+                'images',
+                bytes,
+                filename: (image as dynamic).fileName as String,
+              );
+              request.files.add(file);
+            } else if (image is PlatformFile) {
+              // Handle PlatformFile (new universal approach)
+              final platformFile = image;
+              if (platformFile.bytes != null &&
+                  platformFile.bytes!.isNotEmpty) {
+                final file = http.MultipartFile.fromBytes(
+                  'images',
+                  platformFile.bytes!,
+                  filename: platformFile.name,
+                );
+                request.files.add(file);
+              } else if (platformFile.path != null &&
+                  platformFile.path!.isNotEmpty) {
+                // Fallback: si PlatformFile tiene path pero no bytes, usar fromPath
+                final file = await http.MultipartFile.fromPath(
+                  'images',
+                  platformFile.path!,
+                  filename: platformFile.name,
+                );
+                request.files.add(file);
+              }
+            }
+          }
+
+          // Usar timeout más largo para operaciones con archivos
+          final streamedResponse = await request.send().timeout(
+            longTimeoutDuration,
+          );
+          final response = await http.Response.fromStream(streamedResponse);
+
+          return _handleResponse<Map<String, dynamic>>(
+            response,
+            (data) => data,
+          );
+        },
+        maxRetries: 2,
+        delay: const Duration(seconds: 3),
+      );
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
   static Future<ApiResponse<Map<String, dynamic>>> getTasksByTeam({
     required String username,
     required String password,
@@ -907,6 +1049,32 @@ class TechHubApiClient {
               'teamId': teamId,
               'userId': userId,
               'newTeamId': newTeamId,
+            }),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> removeMaterialFromTeam({
+    required String username,
+    required String password,
+    required String teamId,
+    required String materialId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/team/removeMaterialFromTeam'),
+            headers: _jsonHeaders,
+            body: json.encode({
+              'username': username,
+              'password': password,
+              'teamId': teamId,
+              'materialId': materialId,
             }),
           )
           .timeout(timeoutDuration);

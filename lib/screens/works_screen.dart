@@ -12,6 +12,7 @@ import '../utils/pdf_download_helper.dart';
 import '../utils/data_helpers.dart';
 import '../utils/map_utils.dart';
 import 'create_report_screen.dart';
+import 'complete_task_screen.dart';
 
 class WorksScreen extends StatefulWidget {
   final AuthManager authManager;
@@ -766,8 +767,10 @@ class _WorksScreenState extends State<WorksScreen> {
       );
     }
 
-    return Column(
+    return Stack(
       children: [
+        Column(
+          children: [
         // Search bar
         Container(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -1027,6 +1030,19 @@ class _WorksScreenState extends State<WorksScreen> {
         ),
         // Tasks list
         Expanded(child: _buildTasksList()),
+          ],
+        ),
+        // Floating Action Button (solo para equipo ET)
+        if (_selectedSection == 'tareas' && _isETTeamUser)
+          Positioned(
+            right: 16,
+            bottom: 16,
+            child: FloatingActionButton(
+              onPressed: _showCreateTaskDialog,
+              backgroundColor: Colors.orange.shade600,
+              child: const Icon(Icons.add, color: Colors.white, size: 28),
+            ),
+          ),
       ],
     );
   }
@@ -1237,6 +1253,8 @@ class _WorksScreenState extends State<WorksScreen> {
                     task['status'] != 'completed' &&
                     task['_id'] != null) {
                   _navigateToEditReport(task);
+                } else if (_selectedSection == 'tareas') {
+                  _handleTaskTap(task);
                 } else {
                   _showTaskDetail(task);
                 }
@@ -1540,6 +1558,10 @@ class _WorksScreenState extends State<WorksScreen> {
 
   String? _getLocationText(dynamic location) =>
       DataHelpers.getLocationText(location);
+
+  String _getTaskTeam(Map<String, dynamic> task) {
+    return task['team']?.toString() ?? 'Sin equipo';
+  }
 
   void _showTaskDetail(Map<String, dynamic> task) async {
     final taskToShow = task;
@@ -2553,6 +2575,307 @@ class _WorksScreenState extends State<WorksScreen> {
     );
   }
 
+  void _handleTaskTap(Map<String, dynamic> task) async {
+    final taskId = task['_id']?.toString();
+    final taskStatus = task['status']?.toString();
+
+    if (taskId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Error: No se encontró el ID de la tarea'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Si la tarea está pending, mostrar detalles con opción de iniciar
+    if (taskStatus == 'pending') {
+      _showTaskDetailWithStartOption(task);
+    }
+    // Si la tarea está in_progress, navegar a pantalla de completar
+    else if (taskStatus == 'in_progress') {
+      final result = await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => CompleteTaskScreen(
+            authManager: widget.authManager,
+            task: task,
+          ),
+        ),
+      );
+
+      // Si se completó exitosamente, recargar datos
+      if (result == true) {
+        _loadData(refresh: true);
+      }
+    }
+    // Si la tarea está completed, mostrar detalles
+    else {
+      _showTaskDetail(task);
+    }
+  }
+
+  void _showTaskDetailWithStartOption(Map<String, dynamic> task) async {
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        final isWideScreen = MediaQuery.of(context).size.width > 600;
+
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          elevation: 0,
+          insetPadding: EdgeInsets.all(isWideScreen ? 32 : 16),
+          child: Container(
+            width: double.infinity,
+            constraints: BoxConstraints(
+              maxWidth:
+                  isWideScreen ? 800 : MediaQuery.of(context).size.width - 32,
+              maxHeight: MediaQuery.of(context).size.height * 0.85,
+            ),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white,
+                  Colors.orange.shade50.withValues(alpha: 0.2),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.orange.withValues(alpha: 0.15),
+                  blurRadius: 30,
+                  offset: const Offset(0, 15),
+                ),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 15,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                // Header
+                _buildDialogHeader(context, task, isWideScreen),
+
+                // Contenido
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(
+                      isWideScreen ? 32 : 20,
+                      0,
+                      isWideScreen ? 32 : 20,
+                      isWideScreen ? 32 : 20,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 24),
+
+                        // Información básica
+                        _buildInfoSection(
+                          'Información General',
+                          LucideIcons.info,
+                          Colors.blue,
+                          [
+                            _buildDetailRow(
+                              'Estado',
+                              _translateStatus(_getTaskStatus(task)),
+                              _getStatusIcon(
+                                _translateStatus(_getTaskStatus(task)),
+                              ),
+                              _getStatusColorFromText(
+                                _translateStatus(_getTaskStatus(task)),
+                              ),
+                            ),
+                            _buildDetailRow(
+                              'Equipo',
+                              _getTaskTeam(task),
+                              LucideIcons.users,
+                              Colors.blue.shade600,
+                            ),
+                            _buildDetailRow(
+                              'Fecha',
+                              _formatDate(_getTaskDate(task)),
+                              LucideIcons.calendar,
+                              Colors.grey.shade600,
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Ubicación
+                        _buildLocationSection(task, isWideScreen),
+
+                        const SizedBox(height: 24),
+
+                        // Descripción
+                        _buildInfoSection(
+                          'Descripción',
+                          LucideIcons.fileText,
+                          Colors.green,
+                          [
+                            _buildDescriptionCard(
+                              _getTaskDescription(task),
+                            ),
+                          ],
+                        ),
+
+                        // Imágenes
+                        if (_getTaskImages(task) != null &&
+                            _getTaskImages(task)!.isNotEmpty) ...[
+                          const SizedBox(height: 24),
+                          _buildImagesSection(_getTaskImages(task)!),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Botón para iniciar tarea
+                Container(
+                  padding: EdgeInsets.all(isWideScreen ? 32 : 20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(20),
+                      bottomRight: Radius.circular(20),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, -4),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            side: BorderSide(color: Colors.grey.shade300),
+                            foregroundColor: Colors.grey.shade700,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text(
+                            'Cerrar',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            _startTaskAndNavigate(task);
+                          },
+                          icon: const Icon(LucideIcons.play),
+                          label: const Text(
+                            'Iniciar Tarea',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green.shade600,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 0,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _startTaskAndNavigate(Map<String, dynamic> task) async {
+    final taskId = task['_id']?.toString();
+    if (taskId == null) return;
+
+    try {
+      // Mostrar loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: Colors.orange),
+              SizedBox(height: 16),
+              Text('Iniciando tarea...'),
+            ],
+          ),
+        ),
+      );
+
+      final response = await TechHubApiClient.startTask(
+        username: widget.authManager.userName!,
+        password: widget.authManager.password!,
+        taskId: taskId,
+      );
+
+      if (!mounted) return;
+      Navigator.of(context).pop(); // Cerrar loading
+
+      if (response.isSuccess) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Tarea marcada como en proceso'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        _loadData(refresh: true);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${response.error}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      try {
+        Navigator.of(context).pop();
+      } catch (_) {}
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error inesperado: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   void _navigateToEditReport(Map<String, dynamic> report) {
     final reportId = report['_id']?.toString();
     if (reportId == null) {
@@ -2867,6 +3190,390 @@ class _WorksScreenState extends State<WorksScreen> {
           ),
         );
       }
+    }
+  }
+
+  void _showCreateTaskDialog() {
+    final TextEditingController titleController = TextEditingController();
+    final TextEditingController locationController = TextEditingController();
+    final TextEditingController toDoController = TextEditingController();
+    List<Map<String, dynamic>> teams = [];
+    String? selectedTeamId;
+    bool isLoadingTeams = true;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            // Cargar equipos si no están cargados
+            if (isLoadingTeams) {
+              TechHubApiClient.getTeams(
+                username: widget.authManager.userName!,
+                password: widget.authManager.password!,
+              ).then((response) {
+                if (response.isSuccess && response.data != null) {
+                  // Filtrar solo los equipos permitidos
+                  final allowedTeams = [
+                    'eq com 1',
+                    'eq com 2',
+                    'et',
+                    'zona norte',
+                    'zona sur',
+                  ];
+
+                  final filteredTeams = response.data!.where((team) {
+                    final teamName = team['name']?.toString().toLowerCase() ?? '';
+                    return allowedTeams.contains(teamName);
+                  }).toList();
+
+                  setState(() {
+                    teams = filteredTeams;
+                    isLoadingTeams = false;
+                  });
+                } else {
+                  setState(() {
+                    isLoadingTeams = false;
+                  });
+                }
+              });
+            }
+
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 500),
+                padding: const EdgeInsets.all(24),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade100,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              LucideIcons.checkSquare,
+                              color: Colors.orange.shade600,
+                              size: 24,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          const Expanded(
+                            child: Text(
+                              'Nueva Tarea',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Icons.close),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Título
+                      Text(
+                        'Título',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: titleController,
+                        decoration: InputDecoration(
+                          hintText: 'Ej: Preventivo - Cámara 123',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: Colors.orange.shade400,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Equipo
+                      Text(
+                        'Equipo',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      isLoadingTeams
+                          ? const Center(
+                            child: CircularProgressIndicator(
+                              color: Colors.orange,
+                            ),
+                          )
+                          : DropdownButtonFormField<String>(
+                            value: selectedTeamId,
+                            decoration: InputDecoration(
+                              hintText: 'Seleccionar equipo',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(
+                                  color: Colors.orange.shade400,
+                                  width: 2,
+                                ),
+                              ),
+                            ),
+                            items: teams.map((team) {
+                              return DropdownMenuItem<String>(
+                                value: team['_id'].toString(),
+                                child: Text(team['name'].toString()),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              setState(() {
+                                selectedTeamId = value;
+                              });
+                            },
+                          ),
+                      const SizedBox(height: 16),
+
+                      // Ubicación
+                      Text(
+                        'Ubicación',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: locationController,
+                        decoration: InputDecoration(
+                          hintText: 'Ej: Av. Principal 123',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: Colors.orange.shade400,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Descripción
+                      Text(
+                        'Descripción',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: toDoController,
+                        maxLines: 4,
+                        decoration: InputDecoration(
+                          hintText: 'Describe la tarea a realizar...',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: Colors.orange.shade400,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Botones
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
+                              ),
+                              child: const Text('Cancelar'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () => _createTask(
+                                titleController.text,
+                                selectedTeamId,
+                                locationController.text,
+                                toDoController.text,
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.orange.shade600,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Text('Crear Tarea'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _createTask(
+    String title,
+    String? teamId,
+    String location,
+    String toDo,
+  ) async {
+    // Validaciones
+    if (title.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('El título es requerido'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (teamId == null || teamId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Debes seleccionar un equipo'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (location.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('La ubicación es requerida'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (toDo.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('La descripción es requerida'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Mostrar loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: Colors.orange),
+            SizedBox(height: 16),
+            Text('Creando tarea...'),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final response = await TechHubApiClient.createTask(
+        username: widget.authManager.userName!,
+        password: widget.authManager.password!,
+        team: teamId,
+        title: title.trim(),
+        location: location.trim(),
+        toDo: toDo.trim(),
+      );
+
+      // Cerrar loading
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      if (response.isSuccess) {
+        // Cerrar el diálogo de crear tarea
+        if (!mounted) return;
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Tarea creada exitosamente'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        // Recargar datos
+        _loadData(refresh: true);
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al crear tarea: ${response.error}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      // Cerrar loading
+      if (!mounted) return;
+      try {
+        Navigator.of(context).pop();
+      } catch (_) {}
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error inesperado: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 

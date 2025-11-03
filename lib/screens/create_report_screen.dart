@@ -240,7 +240,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
 
   // Connectivity fields
   final _dbController = TextEditingController();
-  final _buffersController = TextEditingController();
+  String _selectedFiberType = '1'; // Tipo de fibra (1-48)
   final _bufferColorController = TextEditingController();
   final _hairColorController = TextEditingController();
   final _apNameController = TextEditingController();
@@ -301,7 +301,6 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   void _setupFormListeners() {
     _descriptionController.addListener(_onFormChanged);
     _dbController.addListener(_onFormChanged);
-    _buffersController.addListener(_onFormChanged);
     _bufferColorController.addListener(_onFormChanged);
     _hairColorController.addListener(_onFormChanged);
     _apNameController.addListener(_onFormChanged);
@@ -318,7 +317,6 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     _autoSaveTimer?.cancel();
     _descriptionController.dispose();
     _dbController.dispose();
-    _buffersController.dispose();
     _bufferColorController.dispose();
     _hairColorController.dispose();
     _apNameController.dispose();
@@ -981,11 +979,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
             _connectivity == 'Fibra óptica' && _dbController.text.isNotEmpty
                 ? _dbController.text
                 : null,
-        buffers:
-            _connectivity == 'Fibra óptica' &&
-                    _buffersController.text.isNotEmpty
-                ? _buffersController.text
-                : null,
+        buffers: _connectivity == 'Fibra óptica' ? _selectedFiberType : null,
         bufferColor:
             _connectivity == 'Fibra óptica' &&
                     _bufferColorController.text.isNotEmpty
@@ -1108,7 +1102,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
           // Populate connectivity-specific fields
           if (report.connectivity == 'Fibra óptica') {
             _dbController.text = report.db ?? '';
-            _buffersController.text = report.buffers ?? '';
+            _selectedFiberType = report.buffers ?? '1';
             _bufferColorController.text = report.bufferColor ?? '';
             _hairColorController.text = report.hairColor ?? '';
           } else if (report.connectivity == 'Enlace') {
@@ -1262,11 +1256,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
             _connectivity == 'Fibra óptica' && _dbController.text.isNotEmpty
                 ? _dbController.text
                 : null,
-        buffers:
-            _connectivity == 'Fibra óptica' &&
-                    _buffersController.text.isNotEmpty
-                ? _buffersController.text
-                : null,
+        buffers: _connectivity == 'Fibra óptica' ? _selectedFiberType : null,
         bufferColor:
             _connectivity == 'Fibra óptica' &&
                     _bufferColorController.text.isNotEmpty
@@ -1323,6 +1313,9 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     // Campo obligatorio: ubicación
     if (_currentLocation == null) return false;
 
+    // Campo obligatorio: al menos 1 imagen
+    if (_selectedImages.isEmpty) return false;
+
     // Campo obligatorio: cámara asociada O fuera de zona con descripción
     if (!_isOutOfZone) {
       // Si no está fuera de zona, debe tener cámara seleccionada
@@ -1340,7 +1333,6 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     if (_connectivity == 'Fibra óptica') {
       // Para fibra óptica, todos los campos son obligatorios
       if (_dbController.text.trim().isEmpty ||
-          _buffersController.text.trim().isEmpty ||
           _bufferColorController.text.trim().isEmpty ||
           _hairColorController.text.trim().isEmpty) {
         return false;
@@ -1371,7 +1363,6 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     // Limpiar controladores de texto
     _descriptionController.clear();
     _dbController.clear();
-    _buffersController.clear();
     _bufferColorController.clear();
     _hairColorController.clear();
     _apNameController.clear();
@@ -1386,6 +1377,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     setState(() {
       _typeOfWork = 'Preventivo';
       _connectivity = 'Fibra óptica';
+      _selectedFiberType = '1';
       _usingMaterials = false;
       _materialQuantities.clear();
       _selectedImages.clear();
@@ -1413,143 +1405,201 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Cantidad de material',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: Colors.grey[800],
-          ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              materialName,
+      builder:
+          (context) => AlertDialog(
+            title: Text(
+              'Cantidad de material',
               style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey[700],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Disponible: $maxQuantity',
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.grey[600],
-              ),
-            ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: quantityController,
-              keyboardType: TextInputType.number,
-              autofocus: true,
-              decoration: InputDecoration(
-                labelText: 'Cantidad a usar *',
-                hintText: 'Ingrese la cantidad',
-                labelStyle: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.grey[300]!),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(
-                    color: Color(0xFF1E293B),
-                    width: 2,
-                  ),
-                ),
-                filled: true,
-                fillColor: Colors.grey[50],
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 16,
-                ),
-              ),
-              style: TextStyle(
-                fontSize: 16,
+                fontSize: 18,
                 fontWeight: FontWeight.w600,
                 color: Colors.grey[800],
               ),
             ),
-          ],
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  materialName,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[700],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Disponible: $maxQuantity',
+                  style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                ),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: quantityController,
+                  keyboardType: TextInputType.number,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: 'Cantidad a usar *',
+                    hintText: 'Ingrese la cantidad',
+                    labelStyle: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey[300]!),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(
+                        color: Color(0xFF1E293B),
+                        width: 2,
+                      ),
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey[50],
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 16,
+                    ),
+                  ),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[800],
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(
+                  'Cancelar',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  final inputText = quantityController.text.trim();
+                  if (inputText.isEmpty) {
+                    // Si está vacío, establecer en 0 y eliminar del mapa
+                    setState(() {
+                      _materialQuantities.remove(materialId);
+                    });
+                    _onFormChanged();
+                    Navigator.of(context).pop();
+                    return;
+                  }
+
+                  final quantity = int.tryParse(inputText);
+                  if (quantity == null) {
+                    _showError('Por favor ingrese un número válido');
+                    return;
+                  }
+
+                  if (quantity < 0) {
+                    _showError('La cantidad no puede ser negativa');
+                    return;
+                  }
+
+                  if (quantity > maxQuantity) {
+                    _showError(
+                      'La cantidad no puede exceder el stock disponible ($maxQuantity)',
+                    );
+                    return;
+                  }
+
+                  setState(() {
+                    if (quantity == 0) {
+                      _materialQuantities.remove(materialId);
+                    } else {
+                      _materialQuantities[materialId] = quantity;
+                    }
+                  });
+                  _onFormChanged();
+                  Navigator.of(context).pop();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1E293B),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text(
+                  'Confirmar',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+    );
+  }
+
+  Widget _buildFiberTypeDropdown() {
+    final isEmpty = _selectedFiberType.isEmpty;
+    final showError = isEmpty;
+
+    return DropdownButtonFormField<String>(
+      value: _selectedFiberType,
+      decoration: InputDecoration(
+        labelText: 'Buffers *',
+        labelStyle: TextStyle(
+          color: showError ? Colors.red[600] : Colors.grey[600],
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(
-              'Cancelar',
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w500,
-              ),
-            ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: showError ? Colors.red[300]! : Colors.grey[300]!,
           ),
-          ElevatedButton(
-            onPressed: () {
-              final inputText = quantityController.text.trim();
-              if (inputText.isEmpty) {
-                // Si está vacío, establecer en 0 y eliminar del mapa
-                setState(() {
-                  _materialQuantities.remove(materialId);
-                });
-                _onFormChanged();
-                Navigator.of(context).pop();
-                return;
-              }
-
-              final quantity = int.tryParse(inputText);
-              if (quantity == null) {
-                _showError('Por favor ingrese un número válido');
-                return;
-              }
-
-              if (quantity < 0) {
-                _showError('La cantidad no puede ser negativa');
-                return;
-              }
-
-              if (quantity > maxQuantity) {
-                _showError(
-                  'La cantidad no puede exceder el stock disponible ($maxQuantity)',
-                );
-                return;
-              }
-
-              setState(() {
-                if (quantity == 0) {
-                  _materialQuantities.remove(materialId);
-                } else {
-                  _materialQuantities[materialId] = quantity;
-                }
-              });
-              _onFormChanged();
-              Navigator.of(context).pop();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1E293B),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 12,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: const Text(
-              'Confirmar',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: showError ? Colors.red[300]! : Colors.grey[300]!,
           ),
-        ],
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: showError ? Colors.red[500]! : const Color(0xFF1E293B),
+            width: 2,
+          ),
+        ),
+        filled: true,
+        fillColor: showError ? Colors.red[50] : Colors.grey[50],
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
+      ),
+      items:
+          List.generate(48, (index) => (index + 1).toString())
+              .map(
+                (value) =>
+                    DropdownMenuItem<String>(value: value, child: Text(value)),
+              )
+              .toList(),
+      onChanged: (value) {
+        setState(() {
+          _selectedFiberType = value ?? '1';
+        });
+        _onFormChanged();
+      },
+      style: TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+        color: Colors.grey[800],
       ),
     );
   }
@@ -2165,17 +2215,15 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   child: _buildInputField(
                     controller: _dbController,
                     label: 'DB',
+                    keyboardType: TextInputType.numberWithOptions(
+                      signed: true,
+                      decimal: true,
+                    ),
                     isRequired: true,
                   ),
                 ),
                 const SizedBox(width: 16),
-                Expanded(
-                  child: _buildInputField(
-                    controller: _buffersController,
-                    label: 'Buffers',
-                    isRequired: true,
-                  ),
-                ),
+                Expanded(child: _buildFiberTypeDropdown()),
               ],
             ),
             const SizedBox(height: 16),
@@ -2184,7 +2232,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                 Expanded(
                   child: _buildInputField(
                     controller: _bufferColorController,
-                    label: 'Color del Buffer',
+                    label: 'Color Buffer',
                     isRequired: true,
                   ),
                 ),
@@ -2192,7 +2240,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                 Expanded(
                   child: _buildInputField(
                     controller: _hairColorController,
-                    label: 'Color del Pelo',
+                    label: 'Color Pelo',
                     isRequired: true,
                   ),
                 ),
@@ -3111,7 +3159,9 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                                           onTap: () {
                                             _showQuantityInputDialog(
                                               materialId: materialId,
-                                              materialName: material['materialName'] ?? 'Material',
+                                              materialName:
+                                                  material['materialName'] ??
+                                                  'Material',
                                               currentQuantity: selectedQuantity,
                                               maxQuantity: availableQuantity,
                                             );
@@ -3318,14 +3368,28 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
               ),
               const SizedBox(width: 12),
               Text(
-                'Archivos Adjuntos',
+                'Archivos Adjuntos *',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
-                  color: Colors.grey[800],
+                  color:
+                      _selectedImages.isEmpty
+                          ? Colors.red[600]
+                          : Colors.grey[800],
                   letterSpacing: 0.15,
                 ),
               ),
+              if (_selectedImages.isEmpty) ...[
+                const SizedBox(width: 8),
+                Text(
+                  '(mínimo 1)',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.red[600],
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 20),
