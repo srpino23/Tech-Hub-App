@@ -1,12 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
 import 'package:http_parser/http_parser.dart';
 import 'api_response.dart';
 
 class TechHubApiClient {
-  static const String baseUrl = 'https://74280601d366.sn.mynetname.net/techhub/api';
+  static const String baseUrl = 'http://172.25.67.110:2400/api';
   static const Duration timeoutDuration = Duration(seconds: 30);
   static const Duration longTimeoutDuration = Duration(
     minutes: 5,
@@ -198,8 +199,7 @@ class TechHubApiClient {
               'WebFileWrapper',
             )) {
               // Handle legacy web files
-              final bytes =
-                  await (image as dynamic).readAsBytes() as List<int>;
+              final bytes = await (image as dynamic).readAsBytes() as List<int>;
               final file = http.MultipartFile.fromBytes(
                 'images',
                 bytes,
@@ -1375,6 +1375,157 @@ class TechHubApiClient {
         response,
         (data) => ReportResponse.fromJson(data),
       );
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  // Transfer endpoints
+  static Future<ApiResponse<Map<String, dynamic>>> bulkTransferToTeam({
+    required String username,
+    required String password,
+    required String userId,
+    required String teamId,
+    required List<Map<String, dynamic>> materials,
+    String? notes,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/transfer/bulkTransferToTeam'),
+            headers: _jsonHeaders,
+            body: json.encode({
+              'username': username,
+              'password': password,
+              'userId': userId,
+              'teamId': teamId,
+              'materials': materials,
+              'notes': notes ?? '',
+            }),
+          )
+          .timeout(longTimeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<List<Map<String, dynamic>>>> getTransferReceipts({
+    required String username,
+    required String password,
+    String? teamId,
+    String? userId,
+    String? startDate,
+    String? endDate,
+  }) async {
+    try {
+      String url = '$baseUrl/transfer/receipts';
+      List<String> queryParams = [];
+
+      if (teamId != null) queryParams.add('teamId=$teamId');
+      if (userId != null) queryParams.add('userId=$userId');
+      if (startDate != null) queryParams.add('startDate=$startDate');
+      if (endDate != null) queryParams.add('endDate=$endDate');
+
+      if (queryParams.isNotEmpty) {
+        url += '?${queryParams.join('&')}';
+      }
+
+      final response = await http
+          .post(
+            Uri.parse(url),
+            headers: _jsonHeaders,
+            body: json.encode({'username': username, 'password': password}),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<List<Map<String, dynamic>>>(
+        response,
+        (data) => List<Map<String, dynamic>>.from(data),
+      );
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> getReceiptById({
+    required String username,
+    required String password,
+    required String receiptId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/transfer/receipt/$receiptId'),
+            headers: _jsonHeaders,
+            body: json.encode({'username': username, 'password': password}),
+          )
+          .timeout(timeoutDuration);
+
+      return _handleResponse<Map<String, dynamic>>(response, (data) => data);
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Uint8List>> downloadReceiptPDF({
+    required String username,
+    required String password,
+    required String receiptId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/transfer/receipt/$receiptId/pdf'),
+            headers: _jsonHeaders,
+            body: json.encode({'username': username, 'password': password}),
+          )
+          .timeout(longTimeoutDuration);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return ApiResponse.success(response.bodyBytes);
+      } else {
+        try {
+          final errorData = json.decode(response.body);
+          final message =
+              errorData['message'] ?? 'Error ${response.statusCode}';
+          return ApiResponse.error(message);
+        } catch (e) {
+          return ApiResponse.error('Error ${response.statusCode}');
+        }
+      }
+    } catch (e) {
+      return ApiResponse.error(_getErrorMessage(e));
+    }
+  }
+
+  static Future<ApiResponse<Uint8List>> downloadReceiptExcel({
+    required String username,
+    required String password,
+    required String receiptId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/transfer/receipt/$receiptId/excel'),
+            headers: _jsonHeaders,
+            body: json.encode({'username': username, 'password': password}),
+          )
+          .timeout(longTimeoutDuration);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return ApiResponse.success(response.bodyBytes);
+      } else {
+        try {
+          final errorData = json.decode(response.body);
+          final message =
+              errorData['message'] ?? 'Error ${response.statusCode}';
+          return ApiResponse.error(message);
+        } catch (e) {
+          return ApiResponse.error('Error ${response.statusCode}');
+        }
+      }
     } catch (e) {
       return ApiResponse.error(_getErrorMessage(e));
     }
