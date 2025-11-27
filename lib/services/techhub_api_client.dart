@@ -7,7 +7,8 @@ import 'package:http_parser/http_parser.dart';
 import 'api_response.dart';
 
 class TechHubApiClient {
-  static const String baseUrl = 'http://172.25.67.110:2400/api';
+  static const String baseUrl =
+      'https://74280601d366.sn.mynetname.net/techhub/api';
   static const Duration timeoutDuration = Duration(seconds: 30);
   static const Duration longTimeoutDuration = Duration(
     minutes: 5,

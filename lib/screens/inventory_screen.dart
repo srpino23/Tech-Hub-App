@@ -51,8 +51,12 @@ class InventoryScreen extends StatefulWidget {
 }
 
 class _InventoryScreenState extends State<InventoryScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late TabController _tabController;
+  late AnimationController _fabAnimationController;
+  late Animation<double> _fabAnimation;
+  bool _isFabMenuOpen = false;
+
   List<Map<String, dynamic>> _mainInventory = [];
   List<Map<String, dynamic>> _recoveredInventory = [];
   List<Map<String, dynamic>> _teamInventory = [];
@@ -77,6 +81,14 @@ class _InventoryScreenState extends State<InventoryScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _fabAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
+    _fabAnimation = CurvedAnimation(
+      parent: _fabAnimationController,
+      curve: Curves.easeInOut,
+    );
     _searchMainController.addListener(_filterMainInventory);
     _searchRecoveredController.addListener(_filterRecoveredInventory);
     _searchTeamController.addListener(_filterTeamInventory);
@@ -86,6 +98,7 @@ class _InventoryScreenState extends State<InventoryScreen>
   @override
   void dispose() {
     _tabController.dispose();
+    _fabAnimationController.dispose();
     _searchMainController.dispose();
     _searchRecoveredController.dispose();
     _searchTeamController.dispose();
@@ -262,11 +275,27 @@ class _InventoryScreenState extends State<InventoryScreen>
     });
   }
 
+  void _toggleFabMenu() {
+    setState(() {
+      _isFabMenuOpen = !_isFabMenuOpen;
+      if (_isFabMenuOpen) {
+        _fabAnimationController.forward();
+      } else {
+        _fabAnimationController.reverse();
+      }
+    });
+  }
+
   void _toggleTransferMode() {
     setState(() {
       _isTransferMode = !_isTransferMode;
       if (!_isTransferMode) {
         _selectedMaterials.clear();
+      }
+      // Cerrar el menú FAB al activar modo transferencia
+      if (_isFabMenuOpen) {
+        _isFabMenuOpen = false;
+        _fabAnimationController.reverse();
       }
     });
   }
@@ -279,7 +308,8 @@ class _InventoryScreenState extends State<InventoryScreen>
     String? additionId,
     String? condition,
   }) {
-    final key = '$source-$materialId${additionId != null ? "-$additionId" : ""}';
+    final key =
+        '$source-$materialId${additionId != null ? "-$additionId" : ""}';
 
     setState(() {
       if (_selectedMaterials.containsKey(key)) {
@@ -370,65 +400,149 @@ class _InventoryScreenState extends State<InventoryScreen>
           ],
         ),
       ),
-      floatingActionButton: Column(
+      floatingActionButton: _buildFloatingActionButtons(),
+    );
+  }
+
+  Widget _buildFloatingActionButtons() {
+    if (_isTransferMode) {
+      // Modo transferencia: botones específicos
+      return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (!_isTransferMode) ...[
-            FloatingActionButton(
-              heroTag: 'historyButton',
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => TransferHistoryScreen(
-                      authManager: widget.authManager,
-                    ),
-                  ),
-                );
-              },
-              backgroundColor: Colors.purple,
-              child: const Icon(LucideIcons.history, color: Colors.white),
+          FloatingActionButton.extended(
+            heroTag: 'confirmTransferButton',
+            onPressed:
+                _selectedMaterials.isEmpty ? null : _showBulkTransferDialog,
+            backgroundColor: Colors.green,
+            icon: const Icon(LucideIcons.send, color: Colors.white),
+            label: Text(
+              'Transferir (${_selectedMaterials.length})',
+              style: const TextStyle(color: Colors.white),
             ),
-            const SizedBox(height: 10),
-            FloatingActionButton(
-              heroTag: 'exportButton',
-              onPressed: _showExportMenu,
-              backgroundColor: Colors.blue,
-              child: const Icon(LucideIcons.download, color: Colors.white),
+          ),
+          const SizedBox(height: 10),
+          FloatingActionButton(
+            heroTag: 'cancelTransferButton',
+            onPressed: _toggleTransferMode,
+            backgroundColor: Colors.red,
+            child: const Icon(LucideIcons.x, color: Colors.white),
+          ),
+        ],
+      );
+    }
+
+    // Modo normal: speed dial
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        // Botones secundarios con animación
+        if (_isFabMenuOpen) ...[
+          _buildSpeedDialOption(
+            icon: LucideIcons.history,
+            label: 'Historial',
+            backgroundColor: Colors.purple,
+            onPressed: () {
+              _toggleFabMenu();
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder:
+                      (context) => TransferHistoryScreen(
+                        authManager: widget.authManager,
+                      ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 10),
+          _buildSpeedDialOption(
+            icon: LucideIcons.download,
+            label: 'Exportar',
+            backgroundColor: Colors.blue,
+            onPressed: () {
+              _toggleFabMenu();
+              _showExportMenu();
+            },
+          ),
+          const SizedBox(height: 10),
+          _buildSpeedDialOption(
+            icon: LucideIcons.plus,
+            label: 'Agregar',
+            backgroundColor: Colors.orange,
+            onPressed: () {
+              _toggleFabMenu();
+              _showAddMaterialDialog();
+            },
+          ),
+          const SizedBox(height: 10),
+          _buildSpeedDialOption(
+            icon: LucideIcons.send,
+            label: 'Transferir',
+            backgroundColor: Colors.green,
+            onPressed: () {
+              _toggleFabMenu();
+              _toggleTransferMode();
+            },
+          ),
+          const SizedBox(height: 16),
+        ],
+        // Botón principal
+        FloatingActionButton(
+          heroTag: 'mainFabButton',
+          onPressed: _toggleFabMenu,
+          backgroundColor: Colors.orange,
+          child: AnimatedRotation(
+            turns: _isFabMenuOpen ? 0.125 : 0,
+            duration: const Duration(milliseconds: 250),
+            child: Icon(
+              _isFabMenuOpen ? LucideIcons.x : LucideIcons.menu,
+              color: Colors.white,
             ),
-            const SizedBox(height: 10),
-            FloatingActionButton(
-              heroTag: 'addButton',
-              onPressed: () => _showAddMaterialDialog(),
-              backgroundColor: Colors.orange,
-              child: const Icon(LucideIcons.plus, color: Colors.white),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSpeedDialOption({
+    required IconData icon,
+    required String label,
+    required Color backgroundColor,
+    required VoidCallback onPressed,
+  }) {
+    return ScaleTransition(
+      scale: _fabAnimation,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.1),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-            const SizedBox(height: 10),
-            FloatingActionButton(
-              heroTag: 'transferModeButton',
-              onPressed: _toggleTransferMode,
-              backgroundColor: Colors.green,
-              child: const Icon(LucideIcons.send, color: Colors.white),
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
             ),
-          ] else ...[
-            FloatingActionButton.extended(
-              heroTag: 'confirmTransferButton',
-              onPressed: _selectedMaterials.isEmpty ? null : _showBulkTransferDialog,
-              backgroundColor: Colors.green,
-              icon: const Icon(LucideIcons.send, color: Colors.white),
-              label: Text(
-                'Transferir (${_selectedMaterials.length})',
-                style: const TextStyle(color: Colors.white),
-              ),
-            ),
-            const SizedBox(height: 10),
-            FloatingActionButton(
-              heroTag: 'cancelTransferButton',
-              onPressed: _toggleTransferMode,
-              backgroundColor: Colors.red,
-              child: const Icon(LucideIcons.x, color: Colors.white),
-            ),
-          ],
+          ),
+          const SizedBox(width: 12),
+          FloatingActionButton(
+            heroTag: 'fab_$label',
+            onPressed: onPressed,
+            backgroundColor: backgroundColor,
+            mini: true,
+            child: Icon(icon, color: Colors.white, size: 20),
+          ),
         ],
       ),
     );
@@ -829,65 +943,88 @@ class _InventoryScreenState extends State<InventoryScreen>
           '${additions.length} unidades',
           style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
         ),
-        trailing: PopupMenuButton<String>(
-          onSelected:
-              (value) => _handleRecoveredMaterialAction(value, material),
-          itemBuilder:
-              (context) => [
-                const PopupMenuItem(
-                  value: 'history',
-                  child: Row(
-                    children: [
-                      Icon(LucideIcons.history, size: 16, color: Colors.blue),
-                      SizedBox(width: 8),
-                      Text(
-                        'Ver Historial',
-                        style: TextStyle(color: Colors.blue),
-                      ),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'add',
-                  child: Row(
-                    children: [
-                      Icon(LucideIcons.plus, size: 16, color: Colors.green),
-                      SizedBox(width: 8),
-                      Text('Agregar Unidad'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'edit',
-                  child: Row(
-                    children: [
-                      Icon(LucideIcons.edit, size: 16),
-                      SizedBox(width: 8),
-                      Text('Editar Material'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'delete',
-                  child: Row(
-                    children: [
-                      Icon(LucideIcons.trash, size: 16, color: Colors.red),
-                      SizedBox(width: 8),
-                      Text('Eliminar', style: TextStyle(color: Colors.red)),
-                    ],
-                  ),
-                ),
-              ],
-        ),
+        trailing:
+            !_isTransferMode
+                ? PopupMenuButton<String>(
+                  onSelected:
+                      (value) =>
+                          _handleRecoveredMaterialAction(value, material),
+                  itemBuilder:
+                      (context) => [
+                        const PopupMenuItem(
+                          value: 'history',
+                          child: Row(
+                            children: [
+                              Icon(
+                                LucideIcons.history,
+                                size: 16,
+                                color: Colors.blue,
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                'Ver Historial',
+                                style: TextStyle(color: Colors.blue),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'add',
+                          child: Row(
+                            children: [
+                              Icon(
+                                LucideIcons.plus,
+                                size: 16,
+                                color: Colors.green,
+                              ),
+                              SizedBox(width: 8),
+                              Text('Agregar Unidad'),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'edit',
+                          child: Row(
+                            children: [
+                              Icon(LucideIcons.edit, size: 16),
+                              SizedBox(width: 8),
+                              Text('Editar Material'),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(
+                                LucideIcons.trash,
+                                size: 16,
+                                color: Colors.red,
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                'Eliminar',
+                                style: TextStyle(color: Colors.red),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                )
+                : null,
         children:
             additions.map<Widget>((addition) {
-              return _buildAdditionCard(materialId, addition);
+              return _buildAdditionCard(materialId, name, addition);
             }).toList(),
       ),
     );
   }
 
-  Widget _buildAdditionCard(String materialId, Map<String, dynamic> addition) {
+  Widget _buildAdditionCard(
+    String materialId,
+    String materialName,
+    Map<String, dynamic> addition,
+  ) {
     final quantity = addition['quantity']?.toString() ?? '1';
     final status = addition['status']?.toString() ?? 'recuperado';
     final condition = addition['condition']?.toString() ?? 'regular';
@@ -897,124 +1034,205 @@ class _InventoryScreenState extends State<InventoryScreen>
     Color statusColor = _getStatusColor(status);
     Color conditionColor = _getConditionColor(condition);
 
+    // Lógica de selección para modo transferencia
+    final selectionKey = '${InventoryType.recovered}-$materialId-$additionId';
+    final isSelected = _selectedMaterials.containsKey(selectionKey);
+    final maxQuantity = int.tryParse(quantity) ?? 1;
+
+    Color cardColor = Colors.grey.shade50;
+    if (isSelected && _isTransferMode) {
+      cardColor = Colors.green.shade50;
+    }
+
     return Container(
       margin: const EdgeInsets.all(8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+        color: cardColor,
         borderRadius: BorderRadius.circular(8),
-        border: Border(left: BorderSide(color: statusColor, width: 4)),
+        border:
+            isSelected && _isTransferMode
+                ? Border.all(color: Colors.green, width: 2)
+                : Border(left: BorderSide(color: statusColor, width: 4)),
       ),
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          Row(
+            children: [
+              // Checkbox en modo transferencia (solo si no está transferido)
+              if (_isTransferMode && status != 'transferido')
+                Checkbox(
+                  value: isSelected,
+                  onChanged: (bool? value) {
+                    _toggleMaterialSelection(
+                      materialId,
+                      materialName,
+                      InventoryType.recovered,
+                      maxQuantity,
+                      additionId: additionId,
+                      condition: condition,
+                    );
+                  },
+                  activeColor: Colors.green,
+                ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        status.toUpperCase(),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: statusColor.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            status.toUpperCase(),
+                            style: TextStyle(
+                              color: statusColor,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: conditionColor.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            condition.toUpperCase(),
+                            style: TextStyle(
+                              color: conditionColor,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Cantidad: $quantity',
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    if (notes.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Notas: $notes',
                         style: TextStyle(
-                          color: statusColor,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
+                          color: Colors.grey.shade600,
+                          fontSize: 12,
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: conditionColor.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        condition.toUpperCase(),
-                        style: TextStyle(
-                          color: conditionColor,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
+                    ],
                   ],
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'Cantidad: $quantity',
-                  style: const TextStyle(fontWeight: FontWeight.w500),
+              ),
+              // Ocultar menú en modo transferencia
+              if (!_isTransferMode)
+                PopupMenuButton<String>(
+                  onSelected:
+                      (value) => _handleAdditionAction(
+                        value,
+                        materialId,
+                        additionId,
+                        addition,
+                      ),
+                  itemBuilder:
+                      (context) => [
+                        const PopupMenuItem(
+                          value: 'edit_status',
+                          child: Row(
+                            children: [
+                              Icon(LucideIcons.edit, size: 16),
+                              SizedBox(width: 8),
+                              Text('Cambiar Estado'),
+                            ],
+                          ),
+                        ),
+                        if (status != 'transferido') ...[
+                          const PopupMenuItem(
+                            value: 'transfer',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  LucideIcons.arrowRight,
+                                  size: 16,
+                                  color: Colors.blue,
+                                ),
+                                SizedBox(width: 8),
+                                Text('Transferir'),
+                              ],
+                            ),
+                          ),
+                        ],
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(
+                                LucideIcons.trash,
+                                size: 16,
+                                color: Colors.red,
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                'Eliminar',
+                                style: TextStyle(color: Colors.red),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                 ),
-                if (notes.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    'Notas: $notes',
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            ],
+          ),
+          // Input de cantidad cuando está seleccionado en modo transferencia
+          if (isSelected && _isTransferMode) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Text(
+                  'Cantidad a transferir:',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      hintText: '1-$maxQuantity',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                    ),
+                    onChanged: (value) {
+                      final newQty = int.tryParse(value);
+                      if (newQty != null &&
+                          newQty > 0 &&
+                          newQty <= maxQuantity) {
+                        _updateMaterialQuantity(selectionKey, newQty);
+                      }
+                    },
                   ),
-                ],
+                ),
               ],
             ),
-          ),
-          PopupMenuButton<String>(
-            onSelected:
-                (value) => _handleAdditionAction(
-                  value,
-                  materialId,
-                  additionId,
-                  addition,
-                ),
-            itemBuilder:
-                (context) => [
-                  const PopupMenuItem(
-                    value: 'edit_status',
-                    child: Row(
-                      children: [
-                        Icon(LucideIcons.edit, size: 16),
-                        SizedBox(width: 8),
-                        Text('Cambiar Estado'),
-                      ],
-                    ),
-                  ),
-                  if (status != 'transferido') ...[
-                    const PopupMenuItem(
-                      value: 'transfer',
-                      child: Row(
-                        children: [
-                          Icon(
-                            LucideIcons.arrowRight,
-                            size: 16,
-                            color: Colors.blue,
-                          ),
-                          SizedBox(width: 8),
-                          Text('Transferir'),
-                        ],
-                      ),
-                    ),
-                  ],
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Row(
-                      children: [
-                        Icon(LucideIcons.trash, size: 16, color: Colors.red),
-                        SizedBox(width: 8),
-                        Text('Eliminar', style: TextStyle(color: Colors.red)),
-                      ],
-                    ),
-                  ),
-                ],
-          ),
+          ],
         ],
       ),
     );
@@ -1109,7 +1327,8 @@ class _InventoryScreenState extends State<InventoryScreen>
     }
     final name = material['name'] as String? ?? 'Sin nombre';
     final isRecovered = material['isRecovered'] as bool? ?? false;
-    final materialId = material['_id']?.toString() ?? material['materialId']?.toString() ?? '';
+    final materialId =
+        material['_id']?.toString() ?? material['materialId']?.toString() ?? '';
 
     final selectionKey = '$type-$materialId';
     final isSelected = _selectedMaterials.containsKey(selectionKey);
@@ -1144,38 +1363,40 @@ class _InventoryScreenState extends State<InventoryScreen>
             offset: const Offset(0, 2),
           ),
         ],
-        border: isSelected && _isTransferMode
-            ? Border.all(color: Colors.green, width: 2)
-            : (isRecovered && type == InventoryType.team
-                ? Border.all(color: Colors.green.shade200, width: 1)
-                : null),
+        border:
+            isSelected && _isTransferMode
+                ? Border.all(color: Colors.green, width: 2)
+                : (isRecovered && type == InventoryType.team
+                    ? Border.all(color: Colors.green.shade200, width: 1)
+                    : null),
       ),
       child: Column(
         children: [
           ListTile(
             contentPadding: const EdgeInsets.all(16),
-            leading: _isTransferMode && type != InventoryType.team
-                ? Checkbox(
-                    value: isSelected,
-                    onChanged: (bool? value) {
-                      _toggleMaterialSelection(
-                        materialId,
-                        name,
-                        type,
-                        quantity,
-                      );
-                    },
-                    activeColor: Colors.green,
-                  )
-                : Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: iconBackgroundColor,
-                      borderRadius: BorderRadius.circular(8),
+            leading:
+                _isTransferMode && type != InventoryType.team
+                    ? Checkbox(
+                      value: isSelected,
+                      onChanged: (bool? value) {
+                        _toggleMaterialSelection(
+                          materialId,
+                          name,
+                          type,
+                          quantity,
+                        );
+                      },
+                      activeColor: Colors.green,
+                    )
+                    : Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: iconBackgroundColor,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(iconData, color: iconColor, size: 24),
                     ),
-                    child: Icon(iconData, color: iconColor, size: 24),
-                  ),
             title: Text(
               name,
               style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
@@ -1190,7 +1411,10 @@ class _InventoryScreenState extends State<InventoryScreen>
                 if (isRecovered && type == InventoryType.team) ...[
                   const SizedBox(height: 4),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.green.shade100,
                       borderRadius: BorderRadius.circular(12),
@@ -1207,72 +1431,87 @@ class _InventoryScreenState extends State<InventoryScreen>
                 ],
               ],
             ),
-            trailing: _isTransferMode && type != InventoryType.team
-                ? null
-                : PopupMenuButton<String>(
-                    onSelected: (value) => _handleMaterialAction(value, material, type),
-                    itemBuilder: (context) => [
-                      const PopupMenuItem(
-                        value: 'history',
-                        child: Row(
-                          children: [
-                            Icon(LucideIcons.history, size: 16, color: Colors.blue),
-                            SizedBox(width: 8),
-                            Text(
-                              'Ver Historial',
-                              style: TextStyle(color: Colors.blue),
+            trailing:
+                _isTransferMode && type != InventoryType.team
+                    ? null
+                    : PopupMenuButton<String>(
+                      onSelected:
+                          (value) =>
+                              _handleMaterialAction(value, material, type),
+                      itemBuilder:
+                          (context) => [
+                            const PopupMenuItem(
+                              value: 'history',
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    LucideIcons.history,
+                                    size: 16,
+                                    color: Colors.blue,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Ver Historial',
+                                    style: TextStyle(color: Colors.blue),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (type != InventoryType.team) ...[
+                              const PopupMenuItem(
+                                value: 'edit',
+                                child: Row(
+                                  children: [
+                                    Icon(LucideIcons.edit, size: 16),
+                                    SizedBox(width: 8),
+                                    Text('Editar'),
+                                  ],
+                                ),
+                              ),
+                            ],
+                            if (type != InventoryType.team) ...[
+                              const PopupMenuItem(
+                                value: 'move',
+                                child: Row(
+                                  children: [
+                                    Icon(LucideIcons.arrowRight, size: 16),
+                                    SizedBox(width: 8),
+                                    Text('Transferir'),
+                                  ],
+                                ),
+                              ),
+                            ],
+                            const PopupMenuItem(
+                              value: 'delete',
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    LucideIcons.trash,
+                                    size: 16,
+                                    color: Colors.red,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Eliminar',
+                                    style: TextStyle(color: Colors.red),
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                      ),
-                      if (type != InventoryType.team) ...[
-                        const PopupMenuItem(
-                          value: 'edit',
-                          child: Row(
-                            children: [
-                              Icon(LucideIcons.edit, size: 16),
-                              SizedBox(width: 8),
-                              Text('Editar'),
-                            ],
-                          ),
+                        child: const Icon(
+                          LucideIcons.moreVertical,
+                          size: 16,
+                          color: Colors.grey,
                         ),
-                      ],
-                      if (type != InventoryType.team) ...[
-                        const PopupMenuItem(
-                          value: 'move',
-                          child: Row(
-                            children: [
-                              Icon(LucideIcons.arrowRight, size: 16),
-                              SizedBox(width: 8),
-                              Text('Transferir'),
-                            ],
-                          ),
-                        ),
-                      ],
-                      const PopupMenuItem(
-                        value: 'delete',
-                        child: Row(
-                          children: [
-                            Icon(LucideIcons.trash, size: 16, color: Colors.red),
-                            SizedBox(width: 8),
-                            Text('Eliminar', style: TextStyle(color: Colors.red)),
-                          ],
-                        ),
-                      ),
-                    ],
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(
-                        LucideIcons.moreVertical,
-                        size: 16,
-                        color: Colors.grey,
                       ),
                     ),
-                  ),
           ),
           // Campo de cantidad cuando está seleccionado en modo transferencia
           if (isSelected && _isTransferMode && type != InventoryType.team)
@@ -3563,27 +3802,60 @@ class _InventoryScreenState extends State<InventoryScreen>
       excel_pkg.IntCellValue(totalMovimientos),
     ]);
 
-    // Hoja de historial
-    final historySheet = excel['Historial'];
-    historySheet.appendRow([
-      excel_pkg.TextCellValue('Material'),
-      excel_pkg.TextCellValue('Cambio'),
-      excel_pkg.TextCellValue('Cantidad'),
-      excel_pkg.TextCellValue('Fecha'),
-    ]);
+    // Hoja de historial - Recopilar todos los movimientos
+    final allMovements = <Map<String, dynamic>>[];
 
     for (var material in _filteredMainInventory) {
       final name = material['name'] ?? 'Sin nombre';
       final history = material['history'] as List? ?? [];
 
       for (var entry in history) {
-        historySheet.appendRow([
-          excel_pkg.TextCellValue(name),
-          excel_pkg.TextCellValue(entry['change'] ?? 'Sin descripción'),
-          excel_pkg.TextCellValue(entry['quantity']?.toString() ?? '0'),
-          excel_pkg.TextCellValue(_formatDate(entry['date'])),
-        ]);
+        allMovements.add({
+          'materialName': name,
+          'change': entry['change'] ?? 'Sin descripción',
+          'quantity': entry['quantity']?.toString() ?? '0',
+          'date': entry['date'],
+          'dateFormatted': _formatDate(entry['date']),
+        });
       }
+    }
+
+    // Ordenar por fecha (más recientes primero)
+    allMovements.sort((a, b) {
+      final dateA = a['date'];
+      final dateB = b['date'];
+      if (dateA == null && dateB == null) return 0;
+      if (dateA == null) return 1;
+      if (dateB == null) return -1;
+
+      try {
+        final parsedA = DateTime.parse(dateA.toString());
+        final parsedB = DateTime.parse(dateB.toString());
+        return parsedB.compareTo(
+          parsedA,
+        ); // Orden descendente (más recientes primero)
+      } catch (e) {
+        return 0;
+      }
+    });
+
+    // Hoja de historial
+    final historySheet = excel['Historial Movimientos'];
+    historySheet.appendRow([
+      excel_pkg.TextCellValue('Fecha'),
+      excel_pkg.TextCellValue('Material'),
+      excel_pkg.TextCellValue('Cambio'),
+      excel_pkg.TextCellValue('Cantidad'),
+    ]);
+
+    // Exportar todos los movimientos ordenados
+    for (var movement in allMovements) {
+      historySheet.appendRow([
+        excel_pkg.TextCellValue(movement['dateFormatted']),
+        excel_pkg.TextCellValue(movement['materialName']),
+        excel_pkg.TextCellValue(movement['change']),
+        excel_pkg.TextCellValue(movement['quantity']),
+      ]);
     }
   }
 
@@ -3637,15 +3909,8 @@ class _InventoryScreenState extends State<InventoryScreen>
       excel_pkg.IntCellValue(totalMovimientos),
     ]);
 
-    // Hoja de historial
-    final historySheet = excel['Historial'];
-    historySheet.appendRow([
-      excel_pkg.TextCellValue('Material'),
-      excel_pkg.TextCellValue('Tipo'),
-      excel_pkg.TextCellValue('Cambio'),
-      excel_pkg.TextCellValue('Cantidad'),
-      excel_pkg.TextCellValue('Fecha'),
-    ]);
+    // Hoja de historial - Recopilar todos los movimientos
+    final allMovements = <Map<String, dynamic>>[];
 
     for (var material in _filteredRecoveredInventory) {
       final name = material['name'] ?? 'Sin nombre';
@@ -3654,28 +3919,70 @@ class _InventoryScreenState extends State<InventoryScreen>
 
       // Historial del material
       for (var entry in history) {
-        historySheet.appendRow([
-          excel_pkg.TextCellValue(name),
-          excel_pkg.TextCellValue('Material'),
-          excel_pkg.TextCellValue(entry['change'] ?? 'Sin descripción'),
-          excel_pkg.TextCellValue(entry['quantity']?.toString() ?? '0'),
-          excel_pkg.TextCellValue(_formatDate(entry['date'])),
-        ]);
+        allMovements.add({
+          'materialName': name,
+          'type': 'Material',
+          'change': entry['change'] ?? 'Sin descripción',
+          'quantity': entry['quantity']?.toString() ?? '0',
+          'date': entry['date'],
+          'dateFormatted': _formatDate(entry['date']),
+        });
       }
 
       // Historial de additions
       for (var addition in additions) {
         final additionHistory = addition['history'] as List? ?? [];
         for (var entry in additionHistory) {
-          historySheet.appendRow([
-            excel_pkg.TextCellValue(name),
-            excel_pkg.TextCellValue('Unidad'),
-            excel_pkg.TextCellValue(entry['change'] ?? 'Sin descripción'),
-            excel_pkg.TextCellValue(entry['quantity']?.toString() ?? '0'),
-            excel_pkg.TextCellValue(_formatDate(entry['date'])),
-          ]);
+          allMovements.add({
+            'materialName': name,
+            'type': 'Unidad',
+            'change': entry['change'] ?? 'Sin descripción',
+            'quantity': entry['quantity']?.toString() ?? '0',
+            'date': entry['date'],
+            'dateFormatted': _formatDate(entry['date']),
+          });
         }
       }
+    }
+
+    // Ordenar por fecha (más recientes primero)
+    allMovements.sort((a, b) {
+      final dateA = a['date'];
+      final dateB = b['date'];
+      if (dateA == null && dateB == null) return 0;
+      if (dateA == null) return 1;
+      if (dateB == null) return -1;
+
+      try {
+        final parsedA = DateTime.parse(dateA.toString());
+        final parsedB = DateTime.parse(dateB.toString());
+        return parsedB.compareTo(
+          parsedA,
+        ); // Orden descendente (más recientes primero)
+      } catch (e) {
+        return 0;
+      }
+    });
+
+    // Hoja de historial
+    final historySheet = excel['Historial Movimientos'];
+    historySheet.appendRow([
+      excel_pkg.TextCellValue('Fecha'),
+      excel_pkg.TextCellValue('Material'),
+      excel_pkg.TextCellValue('Tipo'),
+      excel_pkg.TextCellValue('Cambio'),
+      excel_pkg.TextCellValue('Cantidad'),
+    ]);
+
+    // Exportar todos los movimientos ordenados
+    for (var movement in allMovements) {
+      historySheet.appendRow([
+        excel_pkg.TextCellValue(movement['dateFormatted']),
+        excel_pkg.TextCellValue(movement['materialName']),
+        excel_pkg.TextCellValue(movement['type']),
+        excel_pkg.TextCellValue(movement['change']),
+        excel_pkg.TextCellValue(movement['quantity']),
+      ]);
     }
   }
 
@@ -3852,17 +4159,47 @@ class _InventoryScreenState extends State<InventoryScreen>
       ),
     );
 
-    // Página de historial (limitado a primeros 10 materiales con historial)
-    final materialsWithHistory =
-        _filteredMainInventory
-            .where((m) {
-              final history = m['history'] as List? ?? [];
-              return history.isNotEmpty;
-            })
-            .take(10)
-            .toList();
+    // Página de historial - Recopilar todos los movimientos
+    final allMovements = <Map<String, dynamic>>[];
 
-    if (materialsWithHistory.isNotEmpty) {
+    for (var material in _filteredMainInventory) {
+      final name = material['name'] ?? 'Sin nombre';
+      final history = material['history'] as List? ?? [];
+
+      for (var entry in history) {
+        allMovements.add({
+          'materialName': name,
+          'change': entry['change'] ?? 'Sin descripción',
+          'quantity': entry['quantity']?.toString() ?? '0',
+          'date': entry['date'],
+          'dateFormatted': _formatDate(entry['date']),
+        });
+      }
+    }
+
+    // Ordenar por fecha (más recientes primero)
+    allMovements.sort((a, b) {
+      final dateA = a['date'];
+      final dateB = b['date'];
+      if (dateA == null && dateB == null) return 0;
+      if (dateA == null) return 1;
+      if (dateB == null) return -1;
+
+      try {
+        final parsedA = DateTime.parse(dateA.toString());
+        final parsedB = DateTime.parse(dateB.toString());
+        return parsedB.compareTo(
+          parsedA,
+        ); // Orden descendente (más recientes primero)
+      } catch (e) {
+        return 0;
+      }
+    });
+
+    // Tomar solo los últimos 10 movimientos
+    final last10Movements = allMovements.take(10).toList();
+
+    if (last10Movements.isNotEmpty) {
       pdf.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
@@ -3871,7 +4208,7 @@ class _InventoryScreenState extends State<InventoryScreen>
               pw.Header(
                 level: 0,
                 child: pw.Text(
-                  'Historial de Movimientos (Últimos 10)',
+                  'Últimos 10 Movimientos',
                   style: pw.TextStyle(
                     fontSize: 20,
                     fontWeight: pw.FontWeight.bold,
@@ -3879,38 +4216,32 @@ class _InventoryScreenState extends State<InventoryScreen>
                 ),
               ),
               pw.SizedBox(height: 20),
-              ...materialsWithHistory.map((material) {
-                final name = material['name'] ?? 'Sin nombre';
-                final history =
-                    (material['history'] as List? ?? []).take(20).toList();
-
-                return pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      name,
-                      style: pw.TextStyle(
-                        fontSize: 14,
-                        fontWeight: pw.FontWeight.bold,
-                      ),
-                    ),
-                    pw.SizedBox(height: 5),
-                    pw.TableHelper.fromTextArray(
-                      headers: ['Cambio', 'Cantidad', 'Fecha'],
-                      data:
-                          history.map((entry) {
-                            return [
-                              entry['change'] ?? 'Sin descripción',
-                              entry['quantity']?.toString() ?? '0',
-                              _formatDate(entry['date']),
-                            ];
-                          }).toList(),
-                      cellAlignment: pw.Alignment.centerLeft,
-                    ),
-                    pw.SizedBox(height: 15),
-                  ],
-                );
-              }),
+              pw.TableHelper.fromTextArray(
+                headers: ['Fecha', 'Material', 'Cambio', 'Cantidad'],
+                data:
+                    last10Movements.map((movement) {
+                      return [
+                        movement['dateFormatted'],
+                        movement['materialName'],
+                        movement['change'],
+                        movement['quantity'],
+                      ];
+                    }).toList(),
+                headerStyle: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.white,
+                ),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.orange,
+                ),
+                cellAlignment: pw.Alignment.centerLeft,
+                cellAlignments: {
+                  0: pw.Alignment.centerLeft,
+                  1: pw.Alignment.centerLeft,
+                  2: pw.Alignment.centerLeft,
+                  3: pw.Alignment.center,
+                },
+              ),
             ];
           },
         ),
@@ -4003,6 +4334,125 @@ class _InventoryScreenState extends State<InventoryScreen>
         },
       ),
     );
+
+    // Página de historial - Recopilar todos los movimientos
+    final allMovements = <Map<String, dynamic>>[];
+
+    for (var material in _filteredRecoveredInventory) {
+      final name = material['name'] ?? 'Sin nombre';
+      final history = material['history'] as List? ?? [];
+      final additions = material['additions'] as List? ?? [];
+
+      // Historial del material
+      for (var entry in history) {
+        allMovements.add({
+          'materialName': name,
+          'type': 'Material',
+          'change': entry['change'] ?? 'Sin descripción',
+          'quantity': entry['quantity']?.toString() ?? '0',
+          'date': entry['date'],
+          'dateFormatted': _formatDate(entry['date']),
+        });
+      }
+
+      // Historial de additions
+      for (var addition in additions) {
+        final additionHistory = addition['history'] as List? ?? [];
+        for (var entry in additionHistory) {
+          allMovements.add({
+            'materialName': name,
+            'type': 'Unidad',
+            'change': entry['change'] ?? 'Sin descripción',
+            'quantity': entry['quantity']?.toString() ?? '0',
+            'date': entry['date'],
+            'dateFormatted': _formatDate(entry['date']),
+          });
+        }
+      }
+    }
+
+    // Ordenar por fecha (más recientes primero)
+    allMovements.sort((a, b) {
+      final dateA = a['date'];
+      final dateB = b['date'];
+      if (dateA == null && dateB == null) return 0;
+      if (dateA == null) return 1;
+      if (dateB == null) return -1;
+
+      try {
+        final parsedA = DateTime.parse(dateA.toString());
+        final parsedB = DateTime.parse(dateB.toString());
+        return parsedB.compareTo(
+          parsedA,
+        ); // Orden descendente (más recientes primero)
+      } catch (e) {
+        return 0;
+      }
+    });
+
+    // Tomar solo los últimos 10 movimientos
+    final last10Movements = allMovements.take(10).toList();
+
+    if (last10Movements.isNotEmpty) {
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          build: (pw.Context context) {
+            return [
+              pw.Header(
+                level: 0,
+                child: pw.Text(
+                  'Últimos 10 Movimientos',
+                  style: pw.TextStyle(
+                    fontSize: 20,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.green700,
+                  ),
+                ),
+              ),
+              pw.SizedBox(height: 20),
+              pw.Text(
+                'Movimientos ordenados del más reciente al más antiguo',
+                style: pw.TextStyle(
+                  fontSize: 12,
+                  fontStyle: pw.FontStyle.italic,
+                  color: PdfColors.grey700,
+                ),
+              ),
+              pw.SizedBox(height: 15),
+              pw.TableHelper.fromTextArray(
+                headers: ['Fecha', 'Material', 'Tipo', 'Cambio', 'Cantidad'],
+                data:
+                    last10Movements.map((movement) {
+                      return [
+                        movement['dateFormatted'],
+                        movement['materialName'],
+                        movement['type'],
+                        movement['change'],
+                        movement['quantity'],
+                      ];
+                    }).toList(),
+                headerStyle: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.white,
+                ),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.green,
+                ),
+                cellAlignment: pw.Alignment.centerLeft,
+                cellAlignments: {
+                  0: pw.Alignment.centerLeft,
+                  1: pw.Alignment.centerLeft,
+                  2: pw.Alignment.center,
+                  3: pw.Alignment.centerLeft,
+                  4: pw.Alignment.center,
+                },
+              ),
+            ];
+          },
+        ),
+      );
+    }
   }
 
   Future<void> _exportTeamInventoryToPDF(pw.Document pdf) async {
@@ -4196,117 +4646,127 @@ class _InventoryScreenState extends State<InventoryScreen>
 
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade100,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  LucideIcons.send,
-                  color: Colors.green.shade700,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Text('Transferencia Múltiple'),
-            ],
-          ),
-          content: SizedBox(
-            width: MediaQuery.of(context).size.width * 0.9,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                Text(
-                  'Materiales seleccionados: ${_selectedMaterials.length}',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                const SizedBox(height: 16),
-
-                // Lista de materiales seleccionados
-                Container(
-                  constraints: const BoxConstraints(maxHeight: 200),
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: _selectedMaterials.length,
-                    itemBuilder: (context, index) {
-                      final selection = _selectedMaterials.values.toList()[index];
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        child: ListTile(
-                          dense: true,
-                          title: Text(
-                            selection.materialName,
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                          subtitle: Text(
-                            'Cantidad: ${selection.quantity} | Origen: ${selection.source == InventoryType.main ? "Principal" : "Recuperado"}',
-                            style: const TextStyle(fontSize: 12),
-                          ),
+      builder:
+          (context) => StatefulBuilder(
+            builder:
+                (context, setState) => AlertDialog(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  title: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade100,
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                      );
-                    },
+                        child: Icon(
+                          LucideIcons.send,
+                          color: Colors.green.shade700,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Text('Transferencia Múltiple'),
+                    ],
                   ),
-                ),
+                  content: SizedBox(
+                    width: MediaQuery.of(context).size.width * 0.9,
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Materiales seleccionados: ${_selectedMaterials.length}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
 
-                const SizedBox(height: 16),
+                          // Lista de materiales seleccionados
+                          Container(
+                            constraints: const BoxConstraints(maxHeight: 200),
+                            child: ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: _selectedMaterials.length,
+                              itemBuilder: (context, index) {
+                                final selection =
+                                    _selectedMaterials.values.toList()[index];
+                                return Card(
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  child: ListTile(
+                                    dense: true,
+                                    title: Text(
+                                      selection.materialName,
+                                      style: const TextStyle(fontSize: 14),
+                                    ),
+                                    subtitle: Text(
+                                      'Cantidad: ${selection.quantity} | Origen: ${selection.source == InventoryType.main ? "Principal" : "Recuperado"}',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
 
-                // Selector de equipo
-                DropdownButtonFormField<String>(
-                  decoration: InputDecoration(
-                    labelText: 'Equipo Destino',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
+                          const SizedBox(height: 16),
+
+                          // Selector de equipo
+                          DropdownButtonFormField<String>(
+                            decoration: InputDecoration(
+                              labelText: 'Equipo Destino',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              prefixIcon: const Icon(LucideIcons.users),
+                            ),
+                            value: selectedTeamId,
+                            items:
+                                _teams.map((team) {
+                                  return DropdownMenuItem<String>(
+                                    value: team['_id'].toString(),
+                                    child: Text(team['name'] ?? 'Sin nombre'),
+                                  );
+                                }).toList(),
+                            onChanged:
+                                (value) =>
+                                    setState(() => selectedTeamId = value),
+                          ),
+                        ],
+                      ),
                     ),
-                    prefixIcon: const Icon(LucideIcons.users),
                   ),
-                  value: selectedTeamId,
-                  items: _teams.map((team) {
-                    return DropdownMenuItem<String>(
-                      value: team['_id'].toString(),
-                      child: Text(team['name'] ?? 'Sin nombre'),
-                    );
-                  }).toList(),
-                  onChanged: (value) => setState(() => selectedTeamId = value),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(
+                        'Cancelar',
+                        style: TextStyle(color: Colors.grey.shade600),
+                      ),
+                    ),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      onPressed:
+                          selectedTeamId != null
+                              ? () => _executeBulkTransfer(selectedTeamId!)
+                              : null,
+                      child: const Text(
+                        'Transferir',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-              ),
-            ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(
-                'Cancelar',
-                style: TextStyle(color: Colors.grey.shade600),
-              ),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              onPressed: selectedTeamId != null
-                  ? () => _executeBulkTransfer(selectedTeamId!)
-                  : null,
-              child: const Text(
-                'Transferir',
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -4316,13 +4776,12 @@ class _InventoryScreenState extends State<InventoryScreen>
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(),
-        ),
+        builder: (context) => const Center(child: CircularProgressIndicator()),
       );
 
       // Preparar datos
-      final materials = _selectedMaterials.values.map((m) => m.toJson()).toList();
+      final materials =
+          _selectedMaterials.values.map((m) => m.toJson()).toList();
 
       // Ejecutar transferencia
       final response = await TechHubApiClient.bulkTransferToTeam(
@@ -4373,94 +4832,121 @@ class _InventoryScreenState extends State<InventoryScreen>
   void _showDownloadReceiptDialog(String receiptId, String receiptNumber) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: Row(
-          children: [
-            Icon(LucideIcons.checkCircle, color: Colors.green.shade700),
-            const SizedBox(width: 12),
-            const Text('Transferencia Exitosa'),
-          ],
-        ),
-        content: SizedBox(
-          width: MediaQuery.of(context).size.width * 0.8,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Remito $receiptNumber generado correctamente',
-                style: const TextStyle(fontSize: 16),
-                textAlign: TextAlign.center,
+      builder:
+          (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Row(
+              children: [
+                Icon(LucideIcons.checkCircle, color: Colors.green.shade700),
+                const SizedBox(width: 12),
+                const Text('Transferencia Exitosa'),
+              ],
+            ),
+            content: SizedBox(
+              width: MediaQuery.of(context).size.width * 0.8,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Remito $receiptNumber generado correctamente',
+                    style: const TextStyle(fontSize: 16),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    '¿Deseas descargar el remito?',
+                    style: TextStyle(fontSize: 14),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              const Text(
-                '¿Deseas descargar el remito?',
-                style: TextStyle(fontSize: 14),
+            ),
+            actionsAlignment: MainAxisAlignment.spaceEvenly,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 8,
+                  ),
+                ),
+                child: const Text('Cerrar', style: TextStyle(fontSize: 13)),
+              ),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                ),
+                onPressed: () {
+                  Navigator.pop(context);
+                  _downloadReceipt(receiptId, receiptNumber, 'pdf');
+                },
+                icon: const Icon(
+                  LucideIcons.fileText,
+                  color: Colors.white,
+                  size: 14,
+                ),
+                label: const Text(
+                  'PDF',
+                  style: TextStyle(color: Colors.white, fontSize: 13),
+                ),
+              ),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                ),
+                onPressed: () {
+                  Navigator.pop(context);
+                  _downloadReceipt(receiptId, receiptNumber, 'excel');
+                },
+                icon: const Icon(
+                  LucideIcons.fileSpreadsheet,
+                  color: Colors.white,
+                  size: 14,
+                ),
+                label: const Text(
+                  'Excel',
+                  style: TextStyle(color: Colors.white, fontSize: 13),
+                ),
               ),
             ],
           ),
-        ),
-        actionsAlignment: MainAxisAlignment.spaceEvenly,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            ),
-            child: const Text('Cerrar', style: TextStyle(fontSize: 13)),
-          ),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            ),
-            onPressed: () {
-              Navigator.pop(context);
-              _downloadReceipt(receiptId, receiptNumber, 'pdf');
-            },
-            icon: const Icon(LucideIcons.fileText, color: Colors.white, size: 14),
-            label: const Text('PDF', style: TextStyle(color: Colors.white, fontSize: 13)),
-          ),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            ),
-            onPressed: () {
-              Navigator.pop(context);
-              _downloadReceipt(receiptId, receiptNumber, 'excel');
-            },
-            icon: const Icon(LucideIcons.fileSpreadsheet, color: Colors.white, size: 14),
-            label: const Text('Excel', style: TextStyle(color: Colors.white, fontSize: 13)),
-          ),
-        ],
-      ),
     );
   }
 
-  Future<void> _downloadReceipt(String receiptId, String receiptNumber, String format) async {
+  Future<void> _downloadReceipt(
+    String receiptId,
+    String receiptNumber,
+    String format,
+  ) async {
     try {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(),
-        ),
+        builder: (context) => const Center(child: CircularProgressIndicator()),
       );
 
-      final response = format == 'pdf'
-          ? await TechHubApiClient.downloadReceiptPDF(
-              username: widget.authManager.userName!,
-              password: widget.authManager.password!,
-              receiptId: receiptId,
-            )
-          : await TechHubApiClient.downloadReceiptExcel(
-              username: widget.authManager.userName!,
-              password: widget.authManager.password!,
-              receiptId: receiptId,
-            );
+      final response =
+          format == 'pdf'
+              ? await TechHubApiClient.downloadReceiptPDF(
+                username: widget.authManager.userName!,
+                password: widget.authManager.password!,
+                receiptId: receiptId,
+              )
+              : await TechHubApiClient.downloadReceiptExcel(
+                username: widget.authManager.userName!,
+                password: widget.authManager.password!,
+                receiptId: receiptId,
+              );
 
       if (!mounted) return;
       Navigator.pop(context);
@@ -4482,7 +4968,11 @@ class _InventoryScreenState extends State<InventoryScreen>
     }
   }
 
-  Future<void> _saveFile(Uint8List bytes, String receiptNumber, String format) async {
+  Future<void> _saveFile(
+    Uint8List bytes,
+    String receiptNumber,
+    String format,
+  ) async {
     try {
       final extension = format == 'pdf' ? 'pdf' : 'xlsx';
       final fileName = 'remito-$receiptNumber.$extension';
