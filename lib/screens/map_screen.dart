@@ -342,13 +342,15 @@ class _MapScreenState extends State<MapScreen> {
 
   Map<String, Map<String, dynamic>> _calculateZoneStats() {
     final zoneStats = <String, Map<String, dynamic>>{};
-    final isBasic2Team = widget.authManager.teamName?.toLowerCase() == 'basic2';
+    final isRestrictedTeam =
+        widget.authManager.teamName?.toLowerCase() == 'basic2' ||
+        widget.authManager.teamName?.toLowerCase() == 'basic3';
 
     for (final camera in _cameras) {
       final zone = (camera['zone'] as String?)?.toLowerCase() ?? 'sin zona';
 
-      // Filtrar zonas para basic2
-      if (isBasic2Team && zone != 'zona norte' && zone != 'zona sur') {
+      // Filtrar zonas para basic2 y basic3 (basic4 no tiene filtro)
+      if (isRestrictedTeam && zone != 'sistemy' && zone != 'mandar') {
         continue;
       }
 
@@ -1161,7 +1163,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   List<Marker> _buildUserMarkers() {
-    // Solo mostrar usuarios si el equipo es "et"
+    // Solo mostrar usuarios si el equipo es "et" (no para basic4)
     final isEtTeam = widget.authManager.teamName?.toLowerCase() == 'et';
     if (!_showUsers || _users.isEmpty || !isEtTeam) return [];
 
@@ -1213,22 +1215,25 @@ class _MapScreenState extends State<MapScreen> {
     final isEtTeam = widget.authManager.teamName?.toLowerCase() == 'et';
     final isBasicTeam = widget.authManager.teamName?.toLowerCase() == 'basic';
     final isBasic2Team = widget.authManager.teamName?.toLowerCase() == 'basic2';
+    final isBasic3Team = widget.authManager.teamName?.toLowerCase() == 'basic3';
+    final isBasic4Team = widget.authManager.teamName?.toLowerCase() == 'basic4';
+    final isRestrictedTeam = isBasic2Team || isBasic3Team;
 
     List<Map<String, dynamic>> camerasToShow;
 
-    // Basic2 SIEMPRE solo ve cámaras offline de zona norte y zona sur
-    if (isBasic2Team) {
+    // Basic2 y Basic3 SIEMPRE solo ven cámaras offline de sistemy y mandar
+    if (isRestrictedTeam) {
       camerasToShow =
           _cameras.where((camera) {
             final liable = camera['liable']?.toString().toLowerCase() ?? '';
             final status = camera['status'] as String?;
-            return (liable == 'zona norte' || liable == 'zona sur') &&
+            return (liable == 'sistemy' || liable == 'mandar') &&
                 status?.toLowerCase() == 'offline';
           }).toList();
     } else if (_showAllCameras) {
-      // Si está seleccionado "Todas", mostrar todas las cámaras pero solo de la zona del equipo
-      if (isEtTeam || isBasicTeam) {
-        // ET team: mostrar todas las cámaras
+      // Si está seleccionado "Todas", mostrar todas las cámaras
+      if (isEtTeam || isBasicTeam || isBasic4Team) {
+        // ET, basic y basic4: mostrar todas las cámaras
         camerasToShow = _cameras;
       } else {
         // Otros equipos: mostrar todas las cámaras pero solo de su zona
@@ -1243,8 +1248,8 @@ class _MapScreenState extends State<MapScreen> {
       }
     } else {
       // Si no está seleccionado "Todas"
-      if (isEtTeam || isBasicTeam) {
-        // ET team: mostrar todas las cámaras offline
+      if (isEtTeam || isBasicTeam || isBasic4Team) {
+        // ET, basic y basic4: mostrar todas las cámaras offline
         camerasToShow =
             _cameras.where((camera) {
               final status = camera['status'] as String?;
@@ -1929,7 +1934,8 @@ class _MapScreenState extends State<MapScreen> {
 
   Widget _buildControlPanel() {
     final isEtTeam = widget.authManager.teamName?.toLowerCase() == 'et';
-    final isBasic2Team = widget.authManager.teamName?.toLowerCase() == 'basic2';
+    // basic4 NO es equipo restringido para el mapa - ve todo
+    final isBasic4Team = widget.authManager.teamName?.toLowerCase() == 'basic4';
 
     return Positioned(
       right: 16,
@@ -1959,16 +1965,17 @@ class _MapScreenState extends State<MapScreen> {
             onPressed: () => setState(() => _showCameras = !_showCameras),
             activeColor: Colors.green,
           ),
-          // Ocultar botón "Todas" para basic2 - solo verán cámaras offline
-          if (!isBasic2Team)
+          // basic4 y et ven el botón "Todas"
+          if (isEtTeam || isBasic4Team)
             _buildControlButton(
               icon: LucideIcons.eye,
               label: 'Todas',
               isActive: _showAllCameras,
-              onPressed: () => setState(() => _showAllCameras = !_showAllCameras),
+              onPressed:
+                  () => setState(() => _showAllCameras = !_showAllCameras),
               activeColor: Colors.purple,
             ),
-          if (isEtTeam) ...[
+          if (isEtTeam || isBasic4Team) ...[
             _buildControlButton(
               icon: LucideIcons.barChart3,
               label: 'Gráficos',
@@ -1976,6 +1983,8 @@ class _MapScreenState extends State<MapScreen> {
               onPressed: () => setState(() => _showGraphics = !_showGraphics),
               activeColor: Colors.indigo,
             ),
+          ],
+          if (isEtTeam) ...[
             const SizedBox(height: 16),
             _buildControlButton(
               icon: LucideIcons.settings,

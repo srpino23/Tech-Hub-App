@@ -60,6 +60,12 @@ class _WorksScreenState extends State<WorksScreen> {
 
   // ET team validation
   bool _isETTeamUser = false;
+  bool _isBasic3TeamUser = false;
+
+  // Cache de usuarios y equipos permitidos para filtrado de basic3 (sistemy y mandar)
+  Set<String> _allowedUserIds = {};
+  Set<String> _allowedTeamIds = {};
+  bool _isAllowedUsersLoaded = false;
 
   @override
   void initState() {
@@ -108,11 +114,13 @@ class _WorksScreenState extends State<WorksScreen> {
       _reports.clear();
     }
 
-    // Cargar usuarios e inventarios primero para que estén disponibles cuando se carguen los reportes
+    // Cargar usuarios, inventarios y usuarios permitidos primero
+    final isBasic3 = widget.authManager.teamName?.toLowerCase() == 'basic3';
     await Future.wait([
       _loadUsers(),
       _loadInventory(),
       _loadRecoveredInventory(),
+      if (isBasic3) _loadAllowedUsers(),
     ]);
 
     // Cargar datos iniciales rápido, luego el resto en segundo plano
@@ -133,9 +141,10 @@ class _WorksScreenState extends State<WorksScreen> {
       });
 
       final isET = await _isETTeam();
+      final isBasic3 = await _isBasic3Team();
       late ApiResponse<Map<String, dynamic>> response;
 
-      if (isET) {
+      if (isET || isBasic3) {
         response = await TechHubApiClient.getAllTasks(
           username: widget.authManager.userName!,
           password: widget.authManager.password!,
@@ -204,9 +213,10 @@ class _WorksScreenState extends State<WorksScreen> {
       });
 
       final isET = await _isETTeam();
+      final isBasic3 = await _isBasic3Team();
       late ApiResponse<Map<String, dynamic>> response;
 
-      if (isET) {
+      if (isET || isBasic3) {
         response = await TechHubApiClient.getAllReports(
           username: widget.authManager.userName!,
           password: widget.authManager.password!,
@@ -290,6 +300,7 @@ class _WorksScreenState extends State<WorksScreen> {
 
     try {
       final isET = await _isETTeam();
+      final isBasic3 = await _isBasic3Team();
       final int totalPages =
           (_tasksTotal / 100).ceil(); // Usar páginas de 100 elementos
       List<Map<String, dynamic>> allTasks = List.from(_tasks);
@@ -299,7 +310,7 @@ class _WorksScreenState extends State<WorksScreen> {
 
         late ApiResponse<Map<String, dynamic>> response;
 
-        if (isET) {
+        if (isET || isBasic3) {
           response = await TechHubApiClient.getAllTasks(
             username: widget.authManager.userName!,
             password: widget.authManager.password!,
@@ -369,6 +380,7 @@ class _WorksScreenState extends State<WorksScreen> {
 
     try {
       final isET = await _isETTeam();
+      final isBasic3 = await _isBasic3Team();
       final int totalPages =
           (_reportsTotal / 100).ceil(); // Usar páginas de 100 elementos
       List<Map<String, dynamic>> allReports = List.from(_reports);
@@ -378,7 +390,7 @@ class _WorksScreenState extends State<WorksScreen> {
 
         late ApiResponse<Map<String, dynamic>> response;
 
-        if (isET) {
+        if (isET || isBasic3) {
           response = await TechHubApiClient.getAllReports(
             username: widget.authManager.userName!,
             password: widget.authManager.password!,
@@ -453,8 +465,52 @@ class _WorksScreenState extends State<WorksScreen> {
 
   void _checkETTeamStatus() async {
     _isETTeamUser = await _isETTeam();
+    _isBasic3TeamUser = widget.authManager.teamName?.toLowerCase() == 'basic3';
+    if (_isBasic3TeamUser) {
+      await _loadAllowedUsers();
+    }
     if (mounted) {
       setState(() {});
+    }
+  }
+
+  Future<bool> _isBasic3Team() async {
+    final teamName = widget.authManager.teamName;
+    return teamName?.toLowerCase() == 'basic3';
+  }
+
+  Future<void> _loadAllowedUsers() async {
+    if (_isAllowedUsersLoaded) return;
+    try {
+      final response = await TechHubApiClient.getTeams(
+        username: widget.authManager.userName!,
+        password: widget.authManager.password!,
+      );
+      if (response.isSuccess && response.data != null) {
+        final teams = response.data!;
+        final allowedUsers = <String>{};
+        final allowedTeams = <String>{};
+        for (var team in teams) {
+          final name = team['name']?.toString().toLowerCase() ?? '';
+          if (name == 'sistemy' || name == 'mandar') {
+            final teamId = team['_id']?.toString() ?? '';
+            if (teamId.isNotEmpty) {
+              allowedTeams.add(teamId);
+            }
+            final users = team['users'] as List<dynamic>? ?? [];
+            for (var userId in users) {
+              allowedUsers.add(userId.toString());
+            }
+            debugPrint('[basic3] Team $name (id: $teamId) users: $users');
+          }
+        }
+        _allowedUserIds = allowedUsers;
+        _allowedTeamIds = allowedTeams;
+        _isAllowedUsersLoaded = true;
+        debugPrint('[basic3] Total usuarios permitidos: ${_allowedUserIds.length} -> $_allowedUserIds');
+      }
+    } catch (e) {
+      debugPrint('[basic3] Exception cargando equipos: $e');
     }
   }
 
@@ -571,8 +627,9 @@ class _WorksScreenState extends State<WorksScreen> {
       });
 
       final isET = await _isETTeam();
+      final isBasic3 = await _isBasic3Team();
 
-      if (!isET) {
+      if (!isET && !isBasic3) {
         final teamId = await _getTeamId();
         if (teamId == null) {
           throw Exception('No se pudo obtener el ID del equipo');
@@ -601,11 +658,38 @@ class _WorksScreenState extends State<WorksScreen> {
     }
   }
 
+  // Verifica si un item (tarea/remito) pertenece a usuarios de sistemy o mandar
+  bool _isFromAllowedTeam(Map<String, dynamic> item) {
+    final isBasic3 = widget.authManager.teamName?.toLowerCase() == 'basic3';
+    if (!isBasic3) return true;
+    if (!_isAllowedUsersLoaded) return false;
+    // Remitos: filtrar por userId del creador
+    final userId = item['userId']?.toString() ?? '';
+    if (userId.isNotEmpty && _allowedUserIds.contains(userId)) {
+      return true;
+    }
+    // Tareas: filtrar por team ID o nombre
+    final teamValue = item['team']?.toString() ?? '';
+    if (teamValue.isNotEmpty) {
+      // Verificar si es un team ID permitido
+      if (_allowedTeamIds.contains(teamValue)) {
+        return true;
+      }
+      // Verificar si es el nombre del equipo directamente
+      final lower = teamValue.toLowerCase();
+      if (lower == 'sistemy' || lower == 'mandar') {
+        return true;
+      }
+    }
+    return false;
+  }
+
   void _filterTasks() {
     if (_selectedSection == 'tareas') {
       _filteredTasks =
           _tasks.where((task) {
             final matchesStatus = task['status'] == _selectedStatus;
+            final matchesTeam = _isFromAllowedTeam(task);
             final matchesSearch =
                 _searchQuery.isEmpty ||
                 (task['title']?.toString().toLowerCase().contains(
@@ -616,12 +700,15 @@ class _WorksScreenState extends State<WorksScreen> {
                       _searchQuery.toLowerCase(),
                     ) ??
                     false);
-            return matchesStatus && matchesSearch;
+            return matchesStatus && matchesSearch && matchesTeam;
           }).toList();
     } else if (_selectedSection == 'remitos') {
       _filteredTasks =
           _reports.where((report) {
             final matchesStatus = report['status'] == _selectedStatus;
+            final matchesTeam = _isFromAllowedTeam(report);
+
+            if (!matchesTeam) return false;
 
             if (_searchQuery.isEmpty) {
               return matchesStatus;
@@ -771,265 +858,266 @@ class _WorksScreenState extends State<WorksScreen> {
       children: [
         Column(
           children: [
-        // Search bar
-        Container(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-                BoxShadow(
-                  color: Colors.orange.withValues(alpha: 0.1),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: TextField(
-              controller: _searchController,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey[800],
-              ),
-              decoration: InputDecoration(
-                hintText:
-                    _selectedSection == 'tareas'
-                        ? 'Buscar tareas...'
-                        : 'Buscar remitos por usuario, tipo, ubicación...',
-                hintStyle: TextStyle(
-                  color: Colors.grey[500],
-                  fontSize: 15,
-                  fontWeight: FontWeight.w400,
-                ),
-                prefixIcon: Container(
-                  padding: const EdgeInsets.all(12),
-                  child:
-                      _isSearching
-                          ? SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
-                              valueColor: AlwaysStoppedAnimation(
-                                Colors.orange.shade600,
-                              ),
-                            ),
-                          )
-                          : Icon(
-                            LucideIcons.search,
-                            color: Colors.grey.shade500,
-                            size: 20,
-                          ),
-                ),
-                suffixIcon:
-                    _searchQuery.isNotEmpty
-                        ? Container(
-                          margin: const EdgeInsets.only(right: 8),
-                          child: IconButton(
-                            icon: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: Colors.grey.shade100,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Icon(
-                                LucideIcons.x,
-                                color: Colors.grey.shade600,
-                                size: 16,
-                              ),
-                            ),
-                            onPressed: () {
-                              _searchController.clear();
-                              _loadData(refresh: true);
-                            },
-                          ),
-                        )
-                        : null,
-                border: OutlineInputBorder(
+            // Search bar
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                    BoxShadow(
+                      color: Colors.orange.withValues(alpha: 0.1),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide(color: Colors.grey.shade200),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide(
-                    color: Colors.orange.shade400,
-                    width: 2,
+                child: TextField(
+                  controller: _searchController,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[800],
+                  ),
+                  decoration: InputDecoration(
+                    hintText:
+                        _selectedSection == 'tareas'
+                            ? 'Buscar tareas...'
+                            : 'Buscar remitos por usuario, tipo, ubicación...',
+                    hintStyle: TextStyle(
+                      color: Colors.grey[500],
+                      fontSize: 15,
+                      fontWeight: FontWeight.w400,
+                    ),
+                    prefixIcon: Container(
+                      padding: const EdgeInsets.all(12),
+                      child:
+                          _isSearching
+                              ? SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  valueColor: AlwaysStoppedAnimation(
+                                    Colors.orange.shade600,
+                                  ),
+                                ),
+                              )
+                              : Icon(
+                                LucideIcons.search,
+                                color: Colors.grey.shade500,
+                                size: 20,
+                              ),
+                    ),
+                    suffixIcon:
+                        _searchQuery.isNotEmpty
+                            ? Container(
+                              margin: const EdgeInsets.only(right: 8),
+                              child: IconButton(
+                                icon: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade100,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Icon(
+                                    LucideIcons.x,
+                                    color: Colors.grey.shade600,
+                                    size: 16,
+                                  ),
+                                ),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  _loadData(refresh: true);
+                                },
+                              ),
+                            )
+                            : null,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(color: Colors.grey.shade200),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(
+                        color: Colors.orange.shade400,
+                        width: 2,
+                      ),
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey[50],
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 16,
+                    ),
                   ),
                 ),
-                filled: true,
-                fillColor: Colors.grey[50],
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 16,
-                ),
               ),
             ),
-          ),
-        ),
 
-        // Section selector (Tareas / Remitos)
-        Container(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: _buildSectionButton(
-                  'Tareas',
-                  'tareas',
-                  LucideIcons.checkSquare,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildSectionButton(
-                  'Remitos',
-                  'remitos',
-                  LucideIcons.fileText,
-                ),
-              ),
-            ],
-          ),
-        ),
-        // Status filter buttons
-        Container(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: Row(
-            children: [
-              Expanded(
-                child: _buildStatusButton(
-                  'Pendientes',
-                  'pending',
-                  Colors.red,
-                  LucideIcons.clock,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildStatusButton(
-                  'En Proceso',
-                  'in_progress',
-                  Colors.orange,
-                  LucideIcons.play,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildStatusButton(
-                  'Terminadas',
-                  'completed',
-                  Colors.green,
-                  LucideIcons.check,
-                ),
-              ),
-            ],
-          ),
-        ),
-        // Results info and pagination controls
-        Container(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Column(
-            children: [
-              // Results info
-              Row(
+            // Section selector (Tareas / Remitos)
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Row(
                 children: [
-                  if (_searchQuery.isNotEmpty) ...[
-                    if (_isSearching)
-                      const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.orange,
-                        ),
-                      )
-                    else
-                      Icon(
-                        LucideIcons.search,
-                        size: 16,
-                        color: Colors.grey.shade600,
-                      ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _isSearching
-                            ? 'Buscando...'
-                            : 'Resultados para: "$_searchQuery"',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey.shade600,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
+                  Expanded(
+                    child: _buildSectionButton(
+                      'Tareas',
+                      'tareas',
+                      LucideIcons.checkSquare,
                     ),
-                  ] else ...[
-                    Icon(
-                      _selectedSection == 'tareas'
-                          ? LucideIcons.checkSquare
-                          : LucideIcons.fileText,
-                      size: 16,
-                      color: Colors.grey.shade600,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildSectionButton(
+                      'Remitos',
+                      'remitos',
+                      LucideIcons.fileText,
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _selectedSection == 'tareas'
-                            ? 'Total: $_tasksTotal tareas'
-                            : 'Total: $_reportsTotal remitos',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                    ),
-                  ],
-                  if (_filteredTasks.isNotEmpty && _searchQuery.isEmpty) ...[
-                    Text(
-                      'Mostrando ${_filteredTasks.length}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade500,
-                      ),
-                    ),
-                  ],
-                  // Indicador de carga en segundo plano
-                  if (_isLoadingAllTasks || _isLoadingAllReports) ...[
-                    const SizedBox(width: 8),
-                    SizedBox(
-                      width: 12,
-                      height: 12,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 1.5,
-                        color: Colors.orange.shade400,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Cargando más...',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.orange.shade600,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
+                  ),
                 ],
               ),
-            ],
-          ),
-        ),
-        // Tasks list
-        Expanded(child: _buildTasksList()),
+            ),
+            // Status filter buttons
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _buildStatusButton(
+                      'Pendientes',
+                      'pending',
+                      Colors.red,
+                      LucideIcons.clock,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildStatusButton(
+                      'En Proceso',
+                      'in_progress',
+                      Colors.orange,
+                      LucideIcons.play,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildStatusButton(
+                      'Terminadas',
+                      'completed',
+                      Colors.green,
+                      LucideIcons.check,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Results info and pagination controls
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Column(
+                children: [
+                  // Results info
+                  Row(
+                    children: [
+                      if (_searchQuery.isNotEmpty) ...[
+                        if (_isSearching)
+                          const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.orange,
+                            ),
+                          )
+                        else
+                          Icon(
+                            LucideIcons.search,
+                            size: 16,
+                            color: Colors.grey.shade600,
+                          ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _isSearching
+                                ? 'Buscando...'
+                                : 'Resultados para: "$_searchQuery"',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade600,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                      ] else ...[
+                        Icon(
+                          _selectedSection == 'tareas'
+                              ? LucideIcons.checkSquare
+                              : LucideIcons.fileText,
+                          size: 16,
+                          color: Colors.grey.shade600,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _selectedSection == 'tareas'
+                                ? 'Total: $_tasksTotal tareas'
+                                : 'Total: $_reportsTotal remitos',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (_filteredTasks.isNotEmpty &&
+                          _searchQuery.isEmpty) ...[
+                        Text(
+                          'Mostrando ${_filteredTasks.length}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade500,
+                          ),
+                        ),
+                      ],
+                      // Indicador de carga en segundo plano
+                      if (_isLoadingAllTasks || _isLoadingAllReports) ...[
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.5,
+                            color: Colors.orange.shade400,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Cargando más...',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.orange.shade600,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            // Tasks list
+            Expanded(child: _buildTasksList()),
           ],
         ),
         // Floating Action Button (solo para equipo ET)
@@ -1392,8 +1480,12 @@ class _WorksScreenState extends State<WorksScreen> {
                   // Location text
                   Expanded(
                     child: Text(
-                      _getLocationText(_getTaskLocation(task)) ?? 'Sin ubicación',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                      _getLocationText(_getTaskLocation(task)) ??
+                          'Sin ubicación',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade500,
+                      ),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -2597,10 +2689,11 @@ class _WorksScreenState extends State<WorksScreen> {
     else if (taskStatus == 'in_progress') {
       final result = await Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (context) => CompleteTaskScreen(
-            authManager: widget.authManager,
-            task: task,
-          ),
+          builder:
+              (context) => CompleteTaskScreen(
+                authManager: widget.authManager,
+                task: task,
+              ),
         ),
       );
 
@@ -2721,11 +2814,7 @@ class _WorksScreenState extends State<WorksScreen> {
                           'Descripción',
                           LucideIcons.fileText,
                           Colors.green,
-                          [
-                            _buildDescriptionCard(
-                              _getTaskDescription(task),
-                            ),
-                          ],
+                          [_buildDescriptionCard(_getTaskDescription(task))],
                         ),
 
                         // Imágenes
@@ -2825,16 +2914,17 @@ class _WorksScreenState extends State<WorksScreen> {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const AlertDialog(
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(color: Colors.orange),
-              SizedBox(height: 16),
-              Text('Iniciando tarea...'),
-            ],
-          ),
-        ),
+        builder:
+            (context) => const AlertDialog(
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: Colors.orange),
+                  SizedBox(height: 16),
+                  Text('Iniciando tarea...'),
+                ],
+              ),
+            ),
       );
 
       final response = await TechHubApiClient.startTask(
@@ -3075,11 +3165,7 @@ class _WorksScreenState extends State<WorksScreen> {
           ),
           title: Row(
             children: [
-              Icon(
-                LucideIcons.trash2,
-                color: Colors.red.shade600,
-                size: 24,
-              ),
+              Icon(LucideIcons.trash2, color: Colors.red.shade600, size: 24),
               const SizedBox(width: 12),
               const Text('Eliminar Remito'),
             ],
@@ -3130,16 +3216,17 @@ class _WorksScreenState extends State<WorksScreen> {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const AlertDialog(
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(color: Colors.orange),
-              SizedBox(height: 16),
-              Text('Eliminando remito...'),
-            ],
-          ),
-        ),
+        builder:
+            (context) => const AlertDialog(
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: Colors.orange),
+                  SizedBox(height: 16),
+                  Text('Eliminando remito...'),
+                ],
+              ),
+            ),
       );
 
       // Llamar al API para eliminar
@@ -3218,14 +3305,16 @@ class _WorksScreenState extends State<WorksScreen> {
                     'eq com 1',
                     'eq com 2',
                     'et',
-                    'zona norte',
-                    'zona sur',
+                    'sistemy',
+                    'mandar',
                   ];
 
-                  final filteredTeams = response.data!.where((team) {
-                    final teamName = team['name']?.toString().toLowerCase() ?? '';
-                    return allowedTeams.contains(teamName);
-                  }).toList();
+                  final filteredTeams =
+                      response.data!.where((team) {
+                        final teamName =
+                            team['name']?.toString().toLowerCase() ?? '';
+                        return allowedTeams.contains(teamName);
+                      }).toList();
 
                   setState(() {
                     teams = filteredTeams;
@@ -3329,7 +3418,7 @@ class _WorksScreenState extends State<WorksScreen> {
                             ),
                           )
                           : DropdownButtonFormField<String>(
-                            value: selectedTeamId,
+                            initialValue: selectedTeamId,
                             decoration: InputDecoration(
                               hintText: 'Seleccionar equipo',
                               border: OutlineInputBorder(
@@ -3343,12 +3432,13 @@ class _WorksScreenState extends State<WorksScreen> {
                                 ),
                               ),
                             ),
-                            items: teams.map((team) {
-                              return DropdownMenuItem<String>(
-                                value: team['_id'].toString(),
-                                child: Text(team['name'].toString()),
-                              );
-                            }).toList(),
+                            items:
+                                teams.map((team) {
+                                  return DropdownMenuItem<String>(
+                                    value: team['_id'].toString(),
+                                    child: Text(team['name'].toString()),
+                                  );
+                                }).toList(),
                             onChanged: (value) {
                               setState(() {
                                 selectedTeamId = value;
@@ -3431,12 +3521,13 @@ class _WorksScreenState extends State<WorksScreen> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: ElevatedButton(
-                              onPressed: () => _createTask(
-                                titleController.text,
-                                selectedTeamId,
-                                locationController.text,
-                                toDoController.text,
-                              ),
+                              onPressed:
+                                  () => _createTask(
+                                    titleController.text,
+                                    selectedTeamId,
+                                    locationController.text,
+                                    toDoController.text,
+                                  ),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.orange.shade600,
                                 foregroundColor: Colors.white,
@@ -3514,16 +3605,17 @@ class _WorksScreenState extends State<WorksScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const AlertDialog(
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(color: Colors.orange),
-            SizedBox(height: 16),
-            Text('Creando tarea...'),
-          ],
-        ),
-      ),
+      builder:
+          (context) => const AlertDialog(
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: Colors.orange),
+                SizedBox(height: 16),
+                Text('Creando tarea...'),
+              ],
+            ),
+          ),
     );
 
     try {

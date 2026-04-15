@@ -128,8 +128,11 @@ class AccessRestrictionService {
   }
 
   bool isWithinWorkingHours(String teamName) {
-    // Usuarios del equipo 'et' y 'basic2' siempre tienen acceso
-    if (teamName == 'et' || teamName == 'basic2') {
+    // Usuarios del equipo 'et', 'basic2', 'basic3' y 'basic4' siempre tienen acceso
+    if (teamName == 'et' ||
+        teamName == 'basic2' ||
+        teamName == 'basic3' ||
+        teamName == 'basic4') {
       return true;
     }
 
@@ -142,8 +145,11 @@ class AccessRestrictionService {
   }
 
   Future<bool> isWithinGeofence(String teamName) async {
-    // Usuarios del equipo 'et' y 'basic2' siempre tienen acceso
-    if (teamName == 'et' || teamName == 'basic2') {
+    // Usuarios del equipo 'et', 'basic2', 'basic3' y 'basic4' siempre tienen acceso
+    if (teamName == 'et' ||
+        teamName == 'basic2' ||
+        teamName == 'basic3' ||
+        teamName == 'basic4') {
       return true;
     }
 

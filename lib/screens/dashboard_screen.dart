@@ -114,16 +114,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'removed': 0,
     };
 
-    final isBasic2Team = widget.authManager.teamName?.toLowerCase() == 'basic2';
+    final isRestrictedTeam =
+        widget.authManager.teamName?.toLowerCase() == 'basic2' ||
+        widget.authManager.teamName?.toLowerCase() == 'basic3';
+
+    // basic4 puede ver TODAS las cámaras sin filtro (se verifica en _canViewLiable)
 
     for (var camera in _cameras) {
-      // Si es basic2, solo contar cámaras de zona norte y zona sur
-      if (isBasic2Team) {
+      // Si es basic2 o basic3, solo contar cámaras de sistemy y mandar
+      if (isRestrictedTeam) {
         final liable = camera['liable']?.toString().toLowerCase() ?? '';
-        if (liable != 'zona norte' && liable != 'zona sur') {
-          continue; // Saltar cámaras que no son de estos equipos
+        if (liable != 'sistemy' && liable != 'mandar') {
+          continue;
         }
       }
+      // basic4 no tiene filtro, cuenta todas las cámaras
 
       final status = camera['status']?.toString().toLowerCase() ?? 'offline';
       if (_generalStatus.containsKey(status)) {
@@ -149,9 +154,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // Helper method para verificar si un equipo puede ser visto por el usuario actual
   bool _canViewLiable(String liableName) {
-    if (widget.authManager.teamName?.toLowerCase() != 'basic2') return true;
+    final teamName = widget.authManager.teamName?.toLowerCase();
+    // basic4 puede ver todos los equipos
+    if (teamName == 'basic4') return true;
+    if (teamName != 'basic2' && teamName != 'basic3') return true;
     final name = liableName.toLowerCase();
-    return name == 'zona norte' || name == 'zona sur';
+    return name == 'sistemy' || name == 'mandar';
   }
 
   // Método auxiliar para obtener el total de cámaras operacionales (sin retiradas)
@@ -207,7 +215,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     }
 
-    final isBasic2Team = widget.authManager.teamName?.toLowerCase() == 'basic2';
+    final isRestrictedTeam =
+        widget.authManager.teamName?.toLowerCase() == 'basic2' ||
+        widget.authManager.teamName?.toLowerCase() == 'basic3';
+
+    final isBasic4Team = widget.authManager.teamName?.toLowerCase() == 'basic4';
 
     return RefreshIndicator(
       onRefresh: _loadDashboardData,
@@ -220,13 +232,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
             _buildGeneralOperabilitySection(),
             const SizedBox(height: 24),
             _buildLiableOperabilitySection(),
-            // Ocultar la sección de Operatividad por Zona para basic2
-            if (!isBasic2Team) ...[
+            // basic4 y et ven la sección de Operatividad por Zona
+            // basic2 y basic3 NO la ven
+            if (!isRestrictedTeam) ...[
               const SizedBox(height: 24),
               _buildZoneOperabilitySection(),
             ],
             const SizedBox(height: 24),
-            _buildOperationalHistorySection(),
+            // Solo basic4 NO ve el Historial de Operatividad
+            if (!isBasic4Team) _buildOperationalHistorySection(),
           ],
         ),
       ),
@@ -448,18 +462,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildLiableOperabilitySection() {
     // Mostrar todos los equipos, ordenados por nombre (excluyendo edla y com)
-    // Filtrar por equipos permitidos si es basic2
-    final sortedLiables = List<Map<String, dynamic>>.from(_liableOperability)
-        .where((liable) {
-          final name = (liable['liable'] ?? '').toString().toLowerCase();
-          return name != 'edla' && name != 'com' && _canViewLiable(name);
-        })
-        .toList()
-      ..sort(
-        (a, b) => (a['liable'] ?? '').toString().toLowerCase().compareTo(
-          (b['liable'] ?? '').toString().toLowerCase(),
-        ),
-      );
+    // Filtrar por equipos permitidos si es basic2 o basic3
+    final sortedLiables =
+        List<Map<String, dynamic>>.from(_liableOperability).where((liable) {
+            final name = (liable['liable'] ?? '').toString().toLowerCase();
+            return name != 'edla' && name != 'com' && _canViewLiable(name);
+          }).toList()
+          ..sort(
+            (a, b) => (a['liable'] ?? '').toString().toLowerCase().compareTo(
+              (b['liable'] ?? '').toString().toLowerCase(),
+            ),
+          );
 
     return Card(
       elevation: 4,
@@ -728,7 +741,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       index % 5 == 0) {
                                     try {
                                       // Invertir el índice para que coincida con los datos invertidos
-                                      final actualIndex = filteredHistory.length - 1 - index;
+                                      final actualIndex =
+                                          filteredHistory.length - 1 - index;
                                       final dateData =
                                           filteredHistory[actualIndex]['date'];
                                       DateTime date;
@@ -810,43 +824,47 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: Wrap(
                   spacing: 12,
                   runSpacing: 8,
-                  children: _liableOperability
-                      .map((e) => (e['liable'] ?? '').toString().trim())
-                      .where((name) =>
-                        name.isNotEmpty &&
-                        name.toLowerCase() != 'edla' &&
-                        name.toLowerCase() != 'com' &&
-                        _canViewLiable(name))
-                      .toSet()
-                      .toList()
-                      .asMap()
-                      .entries
-                      .map((entry) {
-                    final index = entry.key;
-                    final name = entry.value;
-                    final color = _getColorForLiable(index);
-                    return Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 12,
-                          height: 12,
-                          decoration: BoxDecoration(
-                            color: color,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          name,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey.shade700,
-                          ),
-                        ),
-                      ],
-                    );
-                  }).toList(),
+                  children:
+                      _liableOperability
+                          .map((e) => (e['liable'] ?? '').toString().trim())
+                          .where(
+                            (name) =>
+                                name.isNotEmpty &&
+                                name.toLowerCase() != 'edla' &&
+                                name.toLowerCase() != 'com' &&
+                                _canViewLiable(name),
+                          )
+                          .toSet()
+                          .toList()
+                          .asMap()
+                          .entries
+                          .map((entry) {
+                            final index = entry.key;
+                            final name = entry.value;
+                            final color = _getColorForLiable(index);
+                            return Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 12,
+                                  height: 12,
+                                  decoration: BoxDecoration(
+                                    color: color,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  name,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey.shade700,
+                                  ),
+                                ),
+                              ],
+                            );
+                          })
+                          .toList(),
                 ),
               ),
           ],
@@ -898,7 +916,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final filteredHistory = _getFilteredOperationalHistory();
 
     for (int i = 0; i < filteredHistory.length; i++) {
-      final entry = filteredHistory[filteredHistory.length - 1 - i]; // Invertir el orden
+      final entry =
+          filteredHistory[filteredHistory.length - 1 - i]; // Invertir el orden
       double operability;
       if (_selectedSeries.toLowerCase() == 'general') {
         operability = _toDoubleSafe(entry['generalOperability']);
@@ -941,11 +960,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final names =
           _liableOperability
               .map((e) => (e['liable'] ?? '').toString().trim())
-              .where((name) =>
-                name.isNotEmpty &&
-                name.toLowerCase() != 'edla' &&
-                name.toLowerCase() != 'com' &&
-                _canViewLiable(name))
+              .where(
+                (name) =>
+                    name.isNotEmpty &&
+                    name.toLowerCase() != 'edla' &&
+                    name.toLowerCase() != 'com' &&
+                    _canViewLiable(name),
+              )
               .toSet()
               .toList()
             ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
@@ -965,16 +986,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // Generar color para un equipo específico basado en su nombre
   Color _getColorForLiable(int index) {
     // Obtener el nombre del equipo en la posición del índice
-    final liableNames = _liableOperability
-        .map((e) => (e['liable'] ?? '').toString().trim().toLowerCase())
-        .where((name) =>
-          name.isNotEmpty &&
-          name != 'edla' &&
-          name != 'com' &&
-          _canViewLiable(name))
-        .toSet()
-        .toList()
-      ..sort();
+    final liableNames =
+        _liableOperability
+            .map((e) => (e['liable'] ?? '').toString().trim().toLowerCase())
+            .where(
+              (name) =>
+                  name.isNotEmpty &&
+                  name != 'edla' &&
+                  name != 'com' &&
+                  _canViewLiable(name),
+            )
+            .toSet()
+            .toList()
+          ..sort();
 
     if (index >= 0 && index < liableNames.length) {
       final teamName = liableNames[index];
@@ -982,8 +1006,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       // Asignar colores específicos por equipo
       if (teamName == 'eq com 1') return Colors.blue.shade600;
       if (teamName == 'eq com 2') return Colors.green.shade600;
-      if (teamName == 'zona norte') return Colors.purple.shade600;
-      if (teamName == 'zona sur') return Colors.orange.shade600;
+      if (teamName == 'sistemy') return Colors.purple.shade600;
+      if (teamName == 'mandar') return Colors.orange.shade600;
     }
 
     // Colores por defecto para otros equipos
@@ -1004,7 +1028,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final filteredHistory = _getFilteredOperationalHistory();
 
     for (int i = 0; i < filteredHistory.length; i++) {
-      final entry = filteredHistory[filteredHistory.length - 1 - i]; // Invertir el orden
+      final entry =
+          filteredHistory[filteredHistory.length - 1 - i]; // Invertir el orden
       final liableList = entry['liableOperability'];
       double operability = 0;
 
@@ -1039,15 +1064,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (_selectedSeries.toLowerCase() == 'todos los equipos') {
       // Mostrar todas las líneas de equipos
       final lineBars = <LineChartBarData>[];
-      final liableNames = _liableOperability
-          .map((e) => (e['liable'] ?? '').toString().trim())
-          .where((name) =>
-            name.isNotEmpty &&
-            name.toLowerCase() != 'edla' &&
-            name.toLowerCase() != 'com' &&
-            _canViewLiable(name))
-          .toSet()
-          .toList();
+      final liableNames =
+          _liableOperability
+              .map((e) => (e['liable'] ?? '').toString().trim())
+              .where(
+                (name) =>
+                    name.isNotEmpty &&
+                    name.toLowerCase() != 'edla' &&
+                    name.toLowerCase() != 'com' &&
+                    _canViewLiable(name),
+              )
+              .toSet()
+              .toList();
 
       for (int i = 0; i < liableNames.length; i++) {
         final liableName = liableNames[i];
@@ -1097,9 +1125,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           belowBarData: BarAreaData(
             show: true,
-            color: _currentSeriesColor().withValues(
-              alpha: 0.3,
-            ),
+            color: _currentSeriesColor().withValues(alpha: 0.3),
           ),
         ),
       ];
@@ -1822,17 +1848,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // Página de operatividad por equipo
   pw.Page _buildLiableOperabilityPage() {
-    final sortedLiables = List<Map<String, dynamic>>.from(_liableOperability)
-        .where((liable) {
-          final name = (liable['liable'] ?? '').toString().toLowerCase();
-          return _canViewLiable(name);
-        })
-        .toList()
-      ..sort(
-        (a, b) => (a['liable'] ?? '').toString().toLowerCase().compareTo(
-          (b['liable'] ?? '').toString().toLowerCase(),
-        ),
-      );
+    final sortedLiables =
+        List<Map<String, dynamic>>.from(_liableOperability).where((liable) {
+            final name = (liable['liable'] ?? '').toString().toLowerCase();
+            return _canViewLiable(name);
+          }).toList()
+          ..sort(
+            (a, b) => (a['liable'] ?? '').toString().toLowerCase().compareTo(
+              (b['liable'] ?? '').toString().toLowerCase(),
+            ),
+          );
 
     return pw.Page(
       pageFormat: PdfPageFormat.a4,

@@ -14,6 +14,19 @@ class AnalyzerApiClient {
     'Content-Type': 'application/json',
   };
 
+  static Map<String, String> _authHeaders(
+    String username,
+    String password, {
+    Map<String, String>? extra,
+  }) {
+    return {
+      ..._jsonHeaders,
+      'x-auth-username': username,
+      'x-auth-password': password,
+      ...?extra,
+    };
+  }
+
   static Future<ApiResponse<List<Map<String, dynamic>>>> getCameras({
     required String username,
     required String password,
@@ -22,8 +35,8 @@ class AnalyzerApiClient {
       final response = await http
           .post(
             Uri.parse('$cameraEndpoint/getCameras'),
-            headers: _jsonHeaders,
-            body: json.encode({'username': username, 'password': password}),
+            headers: _authHeaders(username, password),
+            body: json.encode({}),
           )
           .timeout(timeoutDuration);
 
@@ -45,8 +58,8 @@ class AnalyzerApiClient {
       final response = await http
           .post(
             Uri.parse('$cameraEndpoint/getCamera/$cameraId'),
-            headers: _jsonHeaders,
-            body: json.encode({'username': username, 'password': password}),
+            headers: _authHeaders(username, password),
+            body: json.encode({}),
           )
           .timeout(timeoutDuration);
 
@@ -69,12 +82,11 @@ class AnalyzerApiClient {
     required Map<String, dynamic> cameraData,
   }) async {
     try {
-      final body = {'username': username, 'password': password, ...cameraData};
       final response = await http
           .post(
             Uri.parse('$cameraEndpoint/addCamera'),
-            headers: _jsonHeaders,
-            body: json.encode(body),
+            headers: _authHeaders(username, password),
+            body: json.encode(cameraData),
           )
           .timeout(timeoutDuration);
 
@@ -94,12 +106,11 @@ class AnalyzerApiClient {
     required Map<String, dynamic> cameraData,
   }) async {
     try {
-      final body = {'username': username, 'password': password, ...cameraData};
       final response = await http
           .put(
             Uri.parse('$cameraEndpoint/updateCamera/$cameraId'),
-            headers: _jsonHeaders,
-            body: json.encode(body),
+            headers: _authHeaders(username, password),
+            body: json.encode(cameraData),
           )
           .timeout(timeoutDuration);
 
@@ -121,8 +132,8 @@ class AnalyzerApiClient {
       final response = await http
           .delete(
             Uri.parse('$cameraEndpoint/deleteCamera/$cameraId'),
-            headers: _jsonHeaders,
-            body: json.encode({'username': username, 'password': password}),
+            headers: _authHeaders(username, password),
+            body: json.encode({}),
           )
           .timeout(timeoutDuration);
 
@@ -145,12 +156,8 @@ class AnalyzerApiClient {
       final response = await http
           .put(
             Uri.parse('$cameraEndpoint/updateStatus/$cameraId'),
-            headers: _jsonHeaders,
-            body: json.encode({
-              'username': username,
-              'password': password,
-              'status': status,
-            }),
+            headers: _authHeaders(username, password),
+            body: json.encode({'status': status}),
           )
           .timeout(timeoutDuration);
 
@@ -175,8 +182,8 @@ class AnalyzerApiClient {
       final response = await http
           .post(
             Uri.parse('$serverEndpoint/getServers'),
-            headers: _jsonHeaders,
-            body: json.encode({'username': username, 'password': password}),
+            headers: _authHeaders(username, password),
+            body: json.encode({}),
           )
           .timeout(timeoutDuration);
 
@@ -198,8 +205,8 @@ class AnalyzerApiClient {
       final response = await http
           .post(
             Uri.parse('$serverEndpoint/getServer/$serverId'),
-            headers: _jsonHeaders,
-            body: json.encode({'username': username, 'password': password}),
+            headers: _authHeaders(username, password),
+            body: json.encode({}),
           )
           .timeout(timeoutDuration);
 
@@ -218,12 +225,11 @@ class AnalyzerApiClient {
     required Map<String, dynamic> serverData,
   }) async {
     try {
-      final body = {'username': username, 'password': password, ...serverData};
       final response = await http
           .post(
             Uri.parse('$serverEndpoint/addServer'),
-            headers: _jsonHeaders,
-            body: json.encode(body),
+            headers: _authHeaders(username, password),
+            body: json.encode(serverData),
           )
           .timeout(timeoutDuration);
 
@@ -243,12 +249,11 @@ class AnalyzerApiClient {
     required Map<String, dynamic> serverData,
   }) async {
     try {
-      final body = {'username': username, 'password': password, ...serverData};
       final response = await http
           .put(
             Uri.parse('$serverEndpoint/updateServer/$serverId'),
-            headers: _jsonHeaders,
-            body: json.encode(body),
+            headers: _authHeaders(username, password),
+            body: json.encode(serverData),
           )
           .timeout(timeoutDuration);
 
@@ -270,8 +275,8 @@ class AnalyzerApiClient {
       final response = await http
           .delete(
             Uri.parse('$serverEndpoint/deleteServer/$serverId'),
-            headers: _jsonHeaders,
-            body: json.encode({'username': username, 'password': password}),
+            headers: _authHeaders(username, password),
+            body: json.encode({}),
           )
           .timeout(timeoutDuration);
 
@@ -294,12 +299,8 @@ class AnalyzerApiClient {
       final response = await http
           .put(
             Uri.parse('$serverEndpoint/updateStatus/$serverId'),
-            headers: _jsonHeaders,
-            body: json.encode({
-              'username': username,
-              'password': password,
-              'status': status,
-            }),
+            headers: _authHeaders(username, password),
+            body: json.encode({'status': status}),
           )
           .timeout(timeoutDuration);
 
@@ -324,8 +325,8 @@ class AnalyzerApiClient {
       final response = await http
           .post(
             Uri.parse('$baseUrl/operationalHistory/getOperationalHistory'),
-            headers: _jsonHeaders,
-            body: json.encode({'username': username, 'password': password}),
+            headers: _authHeaders(username, password),
+            body: json.encode({}),
           )
           .timeout(timeoutDuration);
 
@@ -345,7 +346,7 @@ class AnalyzerApiClient {
   static const String streamBaseUrl =
       'https://74280601d366.sn.mynetname.net/analyzer/api/stream';
   static const String websocketUrl =
-      'wss://74280601d366.sn.mynetname.net/test/ws';
+      'wss://74280601d366.sn.mynetname.net/analyzer/ws';
 
   // Iniciar stream en el servidor antes de conectar por WebSocket
   static Future<ApiResponse<Map<String, dynamic>>> startStream({
@@ -357,8 +358,8 @@ class AnalyzerApiClient {
       final response = await http
           .post(
             Uri.parse('$streamBaseUrl/start/$cameraId'),
-            headers: _jsonHeaders,
-            body: json.encode({'username': username, 'password': password}),
+            headers: _authHeaders(username, password),
+            body: json.encode({}),
           )
           .timeout(timeoutDuration);
 

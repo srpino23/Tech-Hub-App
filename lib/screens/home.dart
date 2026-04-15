@@ -59,6 +59,39 @@ class _HomeScreenState extends State<HomeScreen> {
         default:
           return _PlaceholderScreen(title: _getTitle());
       }
+    } else if (widget.authManager.teamName == 'basic3') {
+      // Dashboard, Map, Works and Profile; no Inventory or CreateReport
+      switch (_currentIndex) {
+        case 0:
+          return DashboardScreen(authManager: widget.authManager);
+        case 1:
+          return MapScreen(authManager: widget.authManager);
+        case 3:
+          return WorksScreen(authManager: widget.authManager);
+        case 4:
+          return ProfileScreen(authManager: widget.authManager);
+        default:
+          return _PlaceholderScreen(title: _getTitle());
+      }
+    } else if (widget.authManager.teamName == 'basic4') {
+      // basic4 es admin-like: Dashboard, Mapa, Cámaras, Profile
+      // Sin Inventario ni Trabajos (muestra "sin permiso")
+      switch (_currentIndex) {
+        case 0:
+          return DashboardScreen(authManager: widget.authManager);
+        case 1:
+          return MapScreen(authManager: widget.authManager);
+        case 2:
+          // basic4 NO tiene acceso a Inventario - mostrar sin permiso
+          return _PlaceholderScreen(title: _getTitle());
+        case 3:
+          // basic4 NO tiene acceso a Trabajos - mostrar sin permiso
+          return _PlaceholderScreen(title: _getTitle());
+        case 4:
+          return ProfileScreen(authManager: widget.authManager);
+        default:
+          return DashboardScreen(authManager: widget.authManager);
+      }
     } else {
       switch (_currentIndex) {
         case 0:
@@ -108,6 +141,34 @@ class _HomeScreenState extends State<HomeScreen> {
         default:
           return 'Dashboard';
       }
+    } else if (widget.authManager.teamName == 'basic3') {
+      switch (_currentIndex) {
+        case 0:
+          return 'Dashboard';
+        case 1:
+          return 'Mapa';
+        case 3:
+          return 'Trabajos';
+        case 4:
+          return 'Perfil';
+        default:
+          return 'Dashboard';
+      }
+    } else if (widget.authManager.teamName == 'basic4') {
+      switch (_currentIndex) {
+        case 0:
+          return 'Dashboard';
+        case 1:
+          return 'Mapa';
+        case 2:
+          return 'Inventario';
+        case 3:
+          return 'Trabajos';
+        case 4:
+          return 'Perfil';
+        default:
+          return 'Dashboard';
+      }
     } else {
       switch (_currentIndex) {
         case 0:
@@ -150,6 +211,34 @@ class _HomeScreenState extends State<HomeScreen> {
           return LucideIcons.map;
         case 2:
           return LucideIcons.plus;
+        case 3:
+          return LucideIcons.checkSquare;
+        case 4:
+          return LucideIcons.user;
+        default:
+          return LucideIcons.layoutDashboard;
+      }
+    } else if (widget.authManager.teamName == 'basic3') {
+      switch (_currentIndex) {
+        case 0:
+          return LucideIcons.layoutDashboard;
+        case 1:
+          return LucideIcons.map;
+        case 3:
+          return LucideIcons.checkSquare;
+        case 4:
+          return LucideIcons.user;
+        default:
+          return LucideIcons.layoutDashboard;
+      }
+    } else if (widget.authManager.teamName == 'basic4') {
+      switch (_currentIndex) {
+        case 0:
+          return LucideIcons.layoutDashboard;
+        case 1:
+          return LucideIcons.map;
+        case 2:
+          return LucideIcons.package;
         case 3:
           return LucideIcons.checkSquare;
         case 4:
@@ -290,7 +379,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   IconButton(
                     icon: Icon(
                       widget.authManager.teamName == 'et' ||
-                              widget.authManager.teamName == 'basic2'
+                              widget.authManager.teamName == 'basic2' ||
+                              widget.authManager.teamName == 'basic3' ||
+                              widget.authManager.teamName == 'basic4'
                           ? LucideIcons.layoutDashboard
                           : LucideIcons.video,
                     ),
@@ -340,11 +431,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: IconButton(
                   onPressed: () => setState(() => _currentIndex = 2),
                   icon: Icon(
-                    widget.authManager.teamName == 'et'
+                    widget.authManager.teamName == 'et' ||
+                            widget.authManager.teamName == 'basic2' ||
+                            widget.authManager.teamName == 'basic3' ||
+                            widget.authManager.teamName == 'basic4'
                         ? LucideIcons.package
-                        : widget.authManager.teamName == 'basic2'
-                            ? LucideIcons.package
-                            : LucideIcons.plus,
+                        : LucideIcons.plus,
                     color: Colors.white,
                     size: 28,
                   ),

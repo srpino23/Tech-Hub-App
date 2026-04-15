@@ -1549,7 +1549,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     final showError = isEmpty;
 
     return DropdownButtonFormField<String>(
-      value: _selectedFiberType,
+      initialValue: _selectedFiberType,
       decoration: InputDecoration(
         labelText: 'Buffers *',
         labelStyle: TextStyle(
